@@ -112,7 +112,7 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: artifacts
-          path:
-            - ./gdextension_build/build/*
-            - ./ffmpeg-kit/build.log
+          path: |
+            ./gdextension_build/build/*
+            ./ffmpeg-kit/build.log
 
