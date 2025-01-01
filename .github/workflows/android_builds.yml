@@ -108,6 +108,7 @@ jobs:
           tests: ${{ matrix.tests }}
 
       - name: Upload artifact
+        if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: artifacts
