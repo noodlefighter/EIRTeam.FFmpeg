@@ -60,10 +60,10 @@ jobs:
         uses: android-actions/setup-android@v3
 
         # From Godot docs, might not be necessary.
-        #- name: (Android) Install Android Tools
-        #  shell: sh
-        #  run: |
-        #    "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "build-tools;30.0.3" "platforms;android-29" "cmdline-tools;latest" "cmake;3.10.2.4988404"
+        - name: (Android) Install Android Tools
+         shell: sh
+         run: |
+           "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "build-tools;30.0.3" "platforms;android-29" "cmdline-tools;latest" "cmake;3.18.1"
 
       - name: (Android) Install NDK r23c
         id: setup-ndk
@@ -71,13 +71,6 @@ jobs:
         with:
             ndk-version: r23c
             link-to-sdk: true
-
-      - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '3.18.1'
-      - name: Use cmake
-        run: cmake --version
 
       - name: Setup python and scons
         uses: ./.github/actions/deps
