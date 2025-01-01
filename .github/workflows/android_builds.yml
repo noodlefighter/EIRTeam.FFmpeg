@@ -60,9 +60,10 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools build-tools;30.0.3 platforms;android-29 cmdline-tools;latest'
-
-      - name: prerequisites
-        run: ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --uninstall "cmake;3.10.2.4988404" "cmake;3.18.1"
+      - name: prerequisites1
+        run: rm -rf ${ANDROID_SDK_ROOT}/cmake/*
+      - name: prerequisites2
+        run: ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "cmake;3.18.1"
 
       - name: Check cmake version
         run: $ANDROID_SDK_ROOT/cmake/3.18.1/bin/cmake --version
