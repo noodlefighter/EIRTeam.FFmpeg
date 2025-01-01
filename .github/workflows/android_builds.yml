@@ -66,12 +66,13 @@ jobs:
         #    "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "build-tools;30.0.3" "platforms;android-29" "cmdline-tools;latest" "cmake;3.10.2.4988404"
 
       - name: (Android) Install NDK r23c
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
             ndk-version: r23c
             link-to-sdk: true
 
-      
+
       - name: Setup python and scons
         uses: ./.github/actions/deps
 
@@ -86,13 +87,14 @@ jobs:
         with:
           path: thirdparty/ffmpeg
           key: ${{ runner.os }}-ffmpeg-android-${{ matrix.target_arch }}-${{ hashFiles('./ffmpeg-kit/**') }}
-          
+
       - name: Make ffmpeg
         if: steps.cache-ffmpeg-android.outputs.cache-hit != 'true'
         shell: sh
         env:
           PLATFORM: android
           TARGET_ARCH: ${{ matrix.target_arch }}
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           make ffmpeg
 
@@ -104,7 +106,7 @@ jobs:
           platform: android
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
-          
+
       - name: Upload artifact
         uses: ./.github/actions/upload-artifact
         with:
