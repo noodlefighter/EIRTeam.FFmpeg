@@ -122,5 +122,4 @@ jobs:
           name: artifacts
           path: |
             ./gdextension_build/build/*
-            ./ffmpeg-kit/build.log
 
