@@ -59,7 +59,10 @@ jobs:
       - name: (Android) Install Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools build-tools;30.0.3 platforms;android-29 cmdline-tools;latest cmake;3.18.1'
+          packages: 'platform-tools build-tools;30.0.3 platforms;android-29 cmdline-tools;latest cmake;3.18.1.6051454'
+
+      - name: Check cmake version
+        run: $ANDROID_SDK_ROOT/cmake/3.18.1/bin/cmake --version
 
       # From Godot docs, might not be necessary.
       # - name: (Android) Install Android Tools
