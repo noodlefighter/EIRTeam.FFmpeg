@@ -48,9 +48,19 @@ void VideoStreamFFMpegLoader::_update_recognized_extension_cache() const {
 		PackedStringArray demuxer_exts = String(current_fmt->extensions).split(",", false);
 		const_cast<VideoStreamFFMpegLoader *>(this)->recognized_extension_cache.append_array(demuxer_exts);
 	}
+
+    const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("udp://"));
+	const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("rtsp://"));
+	const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("file://"));
 }
 
 String VideoStreamFFMpegLoader::get_resource_type_internal(const String &p_path) const {
+	for (auto i : recognized_protocol_cache) {
+		if (p_path.begins_with(i)) {
+			return "VideoStreamFFMpegLoader";
+		}
+	}
+
 	_update_recognized_extension_cache();
 	if (recognized_extension_cache.has(p_path.get_extension())) {
 		return "VideoStreamFFMpegLoader";
@@ -59,6 +69,21 @@ String VideoStreamFFMpegLoader::get_resource_type_internal(const String &p_path)
 }
 
 Ref<Resource> VideoStreamFFMpegLoader::load_internal(const String &p_path, const String &p_original_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) const {
+
+	for (auto i : recognized_protocol_cache) {
+		if (p_path.begins_with(i)) {
+			Ref<FFmpegUriStream> stream;
+			stream.instantiate();
+			stream->set_file(p_path);
+
+			if (r_error) {
+				*r_error = OK;
+			}
+
+			return stream;
+		}
+	}
+
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ);
 	if (f.is_null()) {
 		if (r_error) {

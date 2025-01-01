@@ -50,6 +50,7 @@ using namespace godot;
 class VideoStreamFFMpegLoader : public ResourceFormatLoader {
 	GDCLASS(VideoStreamFFMpegLoader, ResourceFormatLoader);
 	PackedStringArray recognized_extension_cache;
+	PackedStringArray recognized_protocol_cache;
 
 private:
 	void _update_recognized_extension_cache() const;

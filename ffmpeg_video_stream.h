@@ -135,6 +135,7 @@ private:
 	double get_playback_position_internal() const;
 	int get_mix_rate_internal() const;
 	int get_channels_internal() const;
+	Error load_internal();
 
 protected:
 	void clear();
@@ -142,6 +143,7 @@ protected:
 
 public:
 	Error load(Ref<FileAccess> p_file_access);
+	Error load(String uri);
 
 	STREAM_FUNC_REDIRECT_0_CONST(bool, is_paused);
 	STREAM_FUNC_REDIRECT_1(void, update, double, p_delta);
@@ -173,6 +175,22 @@ protected:
 		if (pb->load(fa) != OK) {
 			return nullptr;
 		}
+		return pb;
+	}
+
+public:
+	STREAM_FUNC_REDIRECT_0(Ref<VideoStreamPlayback>, instantiate_playback);
+};
+
+class FFmpegUriStream : public VideoStream {
+	GDCLASS(FFmpegUriStream, VideoStream);
+
+protected:
+	static void _bind_methods(){}; // Required by GDExtension, do not remove
+	Ref<VideoStreamPlayback> instantiate_playback_internal() {
+		Ref<FFmpegVideoStreamPlayback> pb;
+		pb.instantiate();
+		pb->load(get_file());
 		return pb;
 	}
 

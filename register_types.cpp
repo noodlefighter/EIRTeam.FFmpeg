@@ -77,6 +77,7 @@ void initialize_ffmpeg_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_ABSTRACT_CLASS(FFmpegVideoStreamPlayback);
 	GDREGISTER_ABSTRACT_CLASS(VideoStreamFFMpegLoader);
 	GDREGISTER_CLASS(FFmpegVideoStream);
+	GDREGISTER_CLASS(FFmpegUriStream);
 	GDREGISTER_INTERNAL_CLASS(FFmpegFrame);
 	ffmpeg_loader.instantiate();
 #ifdef GDEXTENSION

@@ -153,6 +153,7 @@ private:
 	SafeFlag skip_current_outputs;
 	SafeNumeric<float> last_decoded_frame_time;
 	Ref<FileAccess> video_file;
+	String video_uri;
 	BitField<HardwareVideoDecoder> target_hw_video_decoders = HardwareVideoDecoder::ANY;
 	Mutex available_textures_mutex;
 	List<Ref<ImageTexture>> available_textures;
@@ -212,6 +213,7 @@ public:
 	FFmpegFrameFormat get_frame_format() const { return frame_format; }
 
 	VideoDecoder(Ref<FileAccess> p_file);
+	VideoDecoder(String uri);
 	~VideoDecoder();
 };
 

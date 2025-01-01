@@ -272,9 +272,7 @@ void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 	}
 }
 
-Error FFmpegVideoStreamPlayback::load(Ref<FileAccess> p_file_access) {
-	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(p_file_access)));
-
+Error FFmpegVideoStreamPlayback::load_internal() {
 	decoder->start_decoding();
 	Vector2i size = decoder->get_size();
 	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
@@ -293,6 +291,16 @@ Error FFmpegVideoStreamPlayback::load(Ref<FileAccess> p_file_access) {
 #endif
 	}
 	return OK;
+}
+
+Error FFmpegVideoStreamPlayback::load(Ref<FileAccess> p_file_access) {
+	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(p_file_access)));
+	return load_internal();
+}
+
+Error FFmpegVideoStreamPlayback::load(String uri) {
+	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(uri)));
+	return load_internal();
 }
 
 bool FFmpegVideoStreamPlayback::is_paused_internal() const {

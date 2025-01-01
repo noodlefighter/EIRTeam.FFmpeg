@@ -117,21 +117,51 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 }
 
 void VideoDecoder::prepare_decoding() {
-	avio_seek(io_context, 0, SEEK_SET);
-	if (!io_context) {
-		const int context_buffer_size = 4096;
-		unsigned char *context_buffer = (unsigned char *)av_malloc(context_buffer_size);
-		io_context = avio_alloc_context(context_buffer, context_buffer_size, 0, this, &VideoDecoder::_read_packet_callback, nullptr, &VideoDecoder::_stream_seek_callback);
-	}
-
+	String uri = String("dummy");
+	AVDictionary *opts = nullptr;
 	format_context = avformat_alloc_context();
-	format_context->pb = io_context;
+
+	if (video_file == nullptr) {
+
+		if (video_uri.begins_with("udp://")) {
+			av_dict_set(&opts, "buffer_size", "327680", 0);
+			av_dict_set(&opts, "timeout", "3000000", 0); // Timeout setting, exit if no UDP input
+			av_dict_set(&opts, "fifo_size", "1000000", 0); // This parameter needs to be set for UDP playback, otherwise an input I/O error will occur midway
+			// Shorten probe time
+			av_dict_set(&opts, "probesize", "32768", 0);
+			av_dict_set(&opts, "analyzeduration", "500000", 0);
+		}
+		else if (video_uri.begins_with("rtsp://")) {
+			av_dict_set(&opts, "buffer_size", "2048000", 0);
+			av_dict_set(&opts, "max_delay", "500000", 0);
+			av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+			av_dict_set(&opts, "stimeout", "3000000", 0); //!< Set timeout to 3 seconds, set the timeout disconnection time in microseconds
+		}
+		else if (video_uri.begins_with("file://")) {
+			av_dict_set(&opts, "buffer_size", "2048000", 0);
+		}
+		else {
+			ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
+		}
+
+		uri = video_uri.utf8().get_data();
+	}
+	else {
+		avio_seek(io_context, 0, SEEK_SET);
+		if (!io_context) {
+			const int context_buffer_size = 4096;
+			unsigned char *context_buffer = (unsigned char *)av_malloc(context_buffer_size);
+			io_context = avio_alloc_context(context_buffer, context_buffer_size, 0, this, &VideoDecoder::_read_packet_callback, nullptr, &VideoDecoder::_stream_seek_callback);
+		}
+
+		format_context->pb = io_context;
+	}
 	format_context->flags |= AVFMT_FLAG_GENPTS;
 	format_context->video_codec = forced_video_codec;
 
-	int open_input_res = avformat_open_input(&format_context, "dummy", nullptr, nullptr);
+	int open_input_res = avformat_open_input(&format_context, uri.utf8().get_data(), nullptr, &opts);
 	input_opened = open_input_res >= 0;
-	ERR_FAIL_COND_MSG(!input_opened, vformat("Error opening file or stream: %s", ffmpeg_get_error_message(open_input_res)));
+	ERR_FAIL_COND_MSG(!input_opened, vformat("Error opening stream from uri: %s", ffmpeg_get_error_message(open_input_res)));
 
 	AVCodec *codec = nullptr;
 
@@ -766,6 +796,10 @@ int VideoDecoder::get_audio_channel_count() const {
 
 VideoDecoder::VideoDecoder(Ref<FileAccess> p_file) {
 	video_file = p_file;
+}
+
+VideoDecoder::VideoDecoder(String uri) {
+	video_uri = uri;
 }
 
 VideoDecoder::~VideoDecoder() {
