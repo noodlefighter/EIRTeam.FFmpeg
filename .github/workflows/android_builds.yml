@@ -72,10 +72,12 @@ jobs:
             ndk-version: r23c
             link-to-sdk: true
 
-      - name: Setup CMake
-        uses: actions/setup-cmake@v3
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '3.18.1'
+      - name: Use cmake
+        run: cmake --version
 
       - name: Setup python and scons
         uses: ./.github/actions/deps
