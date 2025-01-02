@@ -121,7 +121,7 @@ else ifeq ($(PLATFORM), macos)
 	cd ffmpeg-kit && ./macos.sh --target=10.12 $(EXTRA_PARAMS) --enable-gpl --enable-macos-avfoundation --no-framework \
 		--enable-gpl --enable-x264 --enable-x265 --enable-lame
 else ifeq ($(PLATFORM), linux)
-	cd ffmpeg-kit && ./linux.sh --enable-gpl --enable-x264 --enable-linux-x265 --enable-linux-lame
+	cd ffmpeg-kit && ./linux.sh --enable-gpl --enable-x264
 endif
 
 
