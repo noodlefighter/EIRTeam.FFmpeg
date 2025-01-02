@@ -141,31 +141,31 @@ void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 
 	playback_position += p_delta * 1000.0f;
 
-	if (decoder->get_decoder_state() == VideoDecoder::DecoderState::END_OF_STREAM && available_frames.size() == 0) {
-		// if at the end of the stream but our playback enters a valid time region again, a seek operation is required to get the decoder back on track.
-		if (playback_position < decoder->get_last_decoded_frame_time()) {
-			seek_into_sync();
-		} else {
-			playing = false;
-		}
-	}
+	// if (decoder->get_decoder_state() == VideoDecoder::DecoderState::END_OF_STREAM && available_frames.size() == 0) {
+	// 	// if at the end of the stream but our playback enters a valid time region again, a seek operation is required to get the decoder back on track.
+	// 	if (playback_position < decoder->get_last_decoded_frame_time()) {
+	// 		seek_into_sync();
+	// 	} else {
+	// 		playing = false;
+	// 	}
+	// }
 
-	Ref<DecodedFrame> peek_frame = available_frames.size() > 0 ? available_frames.front()->get() : nullptr;
-	bool out_of_sync = false;
+	// Ref<DecodedFrame> peek_frame = available_frames.size() > 0 ? available_frames.front()->get() : nullptr;
+	// bool out_of_sync = false;
 
-	if (peek_frame.is_valid()) {
-		out_of_sync = Math::abs(playback_position - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
+	// if (peek_frame.is_valid()) {
+	// 	out_of_sync = Math::abs(playback_position - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
 
-		if (looping) {
-			out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
-					Math::abs(playback_position + decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
-		}
-	}
+	// 	if (looping) {
+	// 		out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
+	// 				Math::abs(playback_position + decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
+	// 	}
+	// }
 
-	if (out_of_sync) {
-		print_line(vformat("Video too far out of sync (%.2f), seeking to %.2f", peek_frame->get_time(), playback_position));
-		seek_into_sync();
-	}
+	// if (out_of_sync) {
+	// 	print_line(vformat("Video too far out of sync (%.2f), seeking to %.2f", peek_frame->get_time(), playback_position));
+	// 	seek_into_sync();
+	// }
 
 	double frame_time = get_current_frame_time();
 
@@ -231,20 +231,20 @@ void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 		peek_audio_frame = available_audio_frames.front()->get();
 	}
 
-	bool audio_out_of_sync = false;
+	// bool audio_out_of_sync = false;
 
-	if (peek_audio_frame.is_valid()) {
-		audio_out_of_sync = Math::abs(playback_position - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
+	// if (peek_audio_frame.is_valid()) {
+	// 	audio_out_of_sync = Math::abs(playback_position - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
 
-		if (looping) {
-			out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
-					Math::abs(playback_position + decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
-		}
-	}
+	// 	if (looping) {
+	// 		out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
+	// 				Math::abs(playback_position + decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
+	// 	}
+	// }
 
-	if (audio_out_of_sync) {
-		// TODO: seek audio stream individually if it desyncs
-	}
+	// if (audio_out_of_sync) {
+	// 	// TODO: seek audio stream individually if it desyncs
+	// }
 
 	List<Ref<DecodedAudioFrame>>::Element *next_audio_frame = available_audio_frames.front();
 	while (next_audio_frame && check_next_audio_frame_valid(next_audio_frame->get())) {

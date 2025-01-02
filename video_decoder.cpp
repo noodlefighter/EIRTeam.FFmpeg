@@ -123,26 +123,26 @@ void VideoDecoder::prepare_decoding() {
 
 	if (video_file == nullptr) {
 
-		if (video_uri.begins_with("udp://")) {
-			av_dict_set(&opts, "buffer_size", "327680", 0);
-			av_dict_set(&opts, "timeout", "3000000", 0); // Timeout setting, exit if no UDP input
-			av_dict_set(&opts, "fifo_size", "1000000", 0); // This parameter needs to be set for UDP playback, otherwise an input I/O error will occur midway
-			// Shorten probe time
-			av_dict_set(&opts, "probesize", "32768", 0);
-			av_dict_set(&opts, "analyzeduration", "500000", 0);
-		}
-		else if (video_uri.begins_with("rtsp://")) {
-			av_dict_set(&opts, "buffer_size", "2048000", 0);
-			av_dict_set(&opts, "max_delay", "500000", 0);
-			av_dict_set(&opts, "rtsp_transport", "tcp", 0);
-			av_dict_set(&opts, "stimeout", "3000000", 0); //!< Set timeout to 3 seconds, set the timeout disconnection time in microseconds
-		}
-		else if (video_uri.begins_with("file://")) {
-			av_dict_set(&opts, "buffer_size", "2048000", 0);
-		}
-		else {
-			ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
-		}
+		// if (video_uri.begins_with("udp://")) {
+		// 	av_dict_set(&opts, "buffer_size", "327680", 0);
+		// 	av_dict_set(&opts, "timeout", "3000000", 0); // Timeout setting, exit if no UDP input
+		// 	av_dict_set(&opts, "fifo_size", "1000000", 0); // This parameter needs to be set for UDP playback, otherwise an input I/O error will occur midway
+		// 	// Shorten probe time
+		// 	av_dict_set(&opts, "probesize", "32768", 0);
+		// 	av_dict_set(&opts, "analyzeduration", "500000", 0);
+		// }
+		// else if (video_uri.begins_with("rtsp://")) {
+		// 	av_dict_set(&opts, "buffer_size", "2048000", 0);
+		// 	av_dict_set(&opts, "max_delay", "500000", 0);
+		// 	av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+		// 	av_dict_set(&opts, "stimeout", "3000000", 0); //!< Set timeout to 3 seconds, set the timeout disconnection time in microseconds
+		// }
+		// else if (video_uri.begins_with("file://")) {
+		// 	av_dict_set(&opts, "buffer_size", "2048000", 0);
+		// }
+		// else {
+		// 	ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
+		// }
 
 		uri = video_uri.utf8().get_data();
 	}
