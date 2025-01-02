@@ -67,7 +67,7 @@ jobs:
 
       - name: Make ffmpeg
         if: steps.cache-ffmpeg-linux.outputs.cache-hit != 'true'
-        shell: sh
+        shell: bash
         env:
           PLATFORM: linux
           TARGET_ARCH: ${{ matrix.target_arch }}
