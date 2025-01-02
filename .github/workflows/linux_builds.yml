@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   build-linux:
-    runs-on: "ubuntu-20.04"
+    runs-on: "ubuntu-22.04"
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -54,9 +54,8 @@ jobs:
         shell: sh
         run: |
           sudo apt update
-          sudo apt -y install clang llvm lld libclang-11-dev libstdc++6 nasm autoconf \
-                      automake libtool pkg-config curl git doxygen rapidjson-dev cmake gperf \
-                      groff texinfo yasm bison autogen wget meson ninja-build
+          sudo apt -y install clang llvm lld libclang-14-dev libstdc++6 nasm autoconf automake libtool pkg-config curl git doxygen rapidjson-dev \
+                      cmake gperf groff texinfo yasm bison autogen wget meson ninja-build
 
       - name: Cache ffmpeg build
         id: cache-ffmpeg-linux
