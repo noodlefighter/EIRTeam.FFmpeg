@@ -9,10 +9,6 @@ on:
         required: false
         type: string
         default: x86_64
-      prefix_arch:
-        required: false
-        type: string
-        default: linux64
 
 # Global Settings
 # SCONS_CACHE for windows must be set in the build environment
@@ -36,7 +32,6 @@ jobs:
           - name: Linux build - ${{ inputs.target }} (${{ inputs.target_arch }})
             cache-name: Linux
             target: ${{ inputs.target }}
-            prefix_arch: ${{ inputs.prefix_arch }}
             target_arch: ${{ inputs.target_arch }}
             # Skip debug symbols, they're way too big with MSVC.
             sconsflags: debug_symbols=no
@@ -85,7 +80,7 @@ jobs:
         uses: ./.github/actions/build
         with:
           sconsflags: ${{ env.SCONSFLAGS }} ${{ matrix.sconsflags }}
-          ffmpeg-path: "../thirdparty/ffmpeg/linux/${{ matrix.prefix_arch }}"
+          ffmpeg-path: "../thirdparty/ffmpeg/linux/${{ matrix.target_arch }}"
           platform: linux
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
