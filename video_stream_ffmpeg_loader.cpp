@@ -49,14 +49,6 @@ void VideoStreamFFMpegLoader::_update_recognized_extension_cache() const {
 		const_cast<VideoStreamFFMpegLoader *>(this)->recognized_extension_cache.append_array(demuxer_exts);
 	}
 
-	avformat_network_init();
-	const char *protocol = NULL;
-	void *opaque = NULL;
-	printf("Supported protocols:\n");
-	while ((protocol = avio_enum_protocols(&opaque, 0)) != NULL) {
-		printf("  %s\n", protocol);
-	}
-
 	const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("udp://"));
 	const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("rtsp://"));
 	const_cast<VideoStreamFFMpegLoader *>(this)->recognized_protocol_cache.append(String("file://"));

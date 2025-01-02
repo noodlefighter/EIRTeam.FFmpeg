@@ -67,6 +67,14 @@ static void print_codecs() {
 			}
 		}
 	}
+
+	avformat_network_init();
+	const char *protocol = NULL;
+	void *opaque = NULL;
+	printf("Supported protocols:\n");
+	while ((protocol = avio_enum_protocols(&opaque, 0)) != NULL) {
+		printf("  %s\n", protocol);
+	}
 }
 
 void initialize_ffmpeg_module(ModuleInitializationLevel p_level) {

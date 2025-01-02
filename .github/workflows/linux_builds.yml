@@ -5,6 +5,14 @@ on:
       target:
         required: true
         type: string
+      target_arch:
+        required: false
+        type: string
+        default: x86_64
+      prefix_arch:
+        required: false
+        type: string
+        default: linux64
 
 # Global Settings
 # SCONS_CACHE for windows must be set in the build environment
@@ -25,9 +33,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Linux build - ${{ inputs.target }}
+          - name: Linux build - ${{ inputs.target }} (${{ inputs.target_arch }})
             cache-name: Linux
             target: ${{ inputs.target }}
+            prefix_arch: ${{ inputs.prefix_arch }}
+            target_arch: ${{ inputs.target_arch }}
             # Skip debug symbols, they're way too big with MSVC.
             sconsflags: debug_symbols=no
     steps:
@@ -35,10 +45,26 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download ffmpeg
+      # - name: Download ffmpeg
+      #   run: |
+      #     wget https://github.com/EIRTeam/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl-godot.tar.xz
+      #     tar xvf ffmpeg-master-latest-linux64-lgpl-godot.tar.xz
+
+      - name: Cache ffmpeg build
+        id: cache-ffmpeg-linux
+        uses: actions/cache@v4
+        with:
+          path: thirdparty/ffmpeg
+          key: ${{ runner.os }}-ffmpeg-linux-${{ matrix.target_arch }}-${{ hashFiles('./ffmpeg-kit/**') }}
+
+      - name: Make ffmpeg
+        if: steps.cache-ffmpeg-linux.outputs.cache-hit != 'true'
+        shell: sh
+        env:
+          PLATFORM: linux
+          TARGET_ARCH: ${{ matrix.target_arch }}
         run: |
-          wget https://github.com/EIRTeam/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-lgpl-godot.tar.xz
-          tar xvf ffmpeg-master-latest-linux64-lgpl-godot.tar.xz
+          make ffmpeg
 
       - name: Setup python and scons
         uses: ./.github/actions/deps
@@ -47,7 +73,7 @@ jobs:
         uses: ./.github/actions/build
         with:
           sconsflags: ${{ env.SCONSFLAGS }} ${{ matrix.sconsflags }}
-          ffmpeg-path: "../ffmpeg-master-latest-linux64-lgpl-godot/"
+          ffmpeg-path: "../thirdparty/ffmpeg/linux/${{ matrix.prefix_arch }}"
           platform: linux
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}

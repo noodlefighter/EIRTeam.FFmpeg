@@ -116,8 +116,7 @@ else
 	$(error "Android NDK not found. Please set ANDROID_NDK_ROOT or ANDROID_NDK_HOME.")
 endif
 	cd ffmpeg-kit && ./android.sh $(EXTRA_PARAMS) --enable-android-media-codec --enable-android-zlib --no-archive \
-		--enable-gpl --enable-x264 --enable-x265 --enable-lame \
-		--enable-protocol=rtp --enable-protocol=rtsp --enable-protocol=udp
+		--enable-gpl --enable-x264 --enable-x265 --enable-lame
 else ifeq ($(PLATFORM), macos)
 	cd ffmpeg-kit && ./macos.sh --target=10.12 $(EXTRA_PARAMS) --enable-gpl --enable-macos-avfoundation --no-framework \
 		--enable-gpl --enable-x264 --enable-x265 --enable-lame
