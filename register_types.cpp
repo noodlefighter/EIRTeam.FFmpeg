@@ -71,9 +71,9 @@ static void print_codecs() {
 	avformat_network_init();
 	const char *protocol = NULL;
 	void *opaque = NULL;
-	printf("Supported protocols:\n");
+	print_line("Supported protocols:");
 	while ((protocol = avio_enum_protocols(&opaque, 0)) != NULL) {
-		printf("  %s\n", protocol);
+		print_line(protocol);
 	}
 }
 
