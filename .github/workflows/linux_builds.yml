@@ -71,7 +71,9 @@ jobs:
       - name: show build.log
         if: always()
         run: |
-          cat ./ffmpeg-kit/build.log
+          if [[ -e ./ffmpeg-kit/build.log ]]; then
+            cat ./ffmpeg-kit/build.log
+          fi
 
       - name: Setup python and scons
         uses: ./.github/actions/deps
