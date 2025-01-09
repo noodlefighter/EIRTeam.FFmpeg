@@ -54,12 +54,13 @@ jobs:
         with:
           file_path: ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip
           extract_dir: .
+          verbose: true
 
       - name: Compilation
         uses: ./.github/actions/build
         with:
           sconsflags: ${{ env.SCONSFLAGS }} ${{ matrix.sconsflags }}
-          ffmpeg-path: "../ffmpeg-n6.1-latest-win64-gpl-shared-6.1"
+          ffmpeg-path: "../ffmpeg-n6.1-latest-win64-lgpl-shared-6.1"
           platform: windows
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
