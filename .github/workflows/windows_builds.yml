@@ -46,20 +46,20 @@ jobs:
         id: downloadfile
         name: Download the file
         with:
-          url: "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.0.2-full_build-shared.7z"
+          url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip"
           target: .
 
-      - name: Install 7-Zip
-        run: choco install 7zip --no-progress
-
-      - name: Unzip 7z file
-        run: 7z x ffmpeg-7.0.2-full_build-shared.7z
+      - name: Extract file
+        uses: ihiroky/extract-action@v1
+        with:
+          file_path: ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip
+          extract_dir: .
 
       - name: Compilation
         uses: ./.github/actions/build
         with:
           sconsflags: ${{ env.SCONSFLAGS }} ${{ matrix.sconsflags }}
-          ffmpeg-path: "../ffmpeg-7.0.2-full_build-shared/"
+          ffmpeg-path: "../ffmpeg-n6.1-latest-win64-gpl-shared-6.1"
           platform: windows
           target: ${{ matrix.target }}
           tests: ${{ matrix.tests }}
