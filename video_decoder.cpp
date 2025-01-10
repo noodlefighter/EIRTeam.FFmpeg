@@ -36,6 +36,8 @@
 #include "tracy_import.h"
 #include <cstdio>
 #include <iterator>
+#include <stdio.h>
+#include <stdint.h>
 
 #ifdef GDEXTENSION
 #include "gdextension_build/gdex_print.h"
@@ -115,22 +117,6 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 	}
 	return decoder->video_file->get_position();
 }
-
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <sys/time.h>
-#endif
-
-#include <stdio.h>
-#include <stdint.h>
 
 long long get_timestamp(void) {
 #ifdef _WIN32

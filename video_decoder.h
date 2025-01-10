@@ -65,6 +65,19 @@ extern "C" {
 
 #include <thread>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/time.h>
+#endif
+
 enum FFmpegFrameFormat {
 	RGBA8,
 	YUV420P,
@@ -136,7 +149,11 @@ private:
 	void initialize_udp_socket(int port);
 	void release_udp_socket();
 	static int _udp_read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size);
+	#ifdef _WIN32
+	SOCKET udp_socket = 0;
+	#else
 	int udp_socket = 0;
+	#endif
 	long long last_fetch_time = 0;
 
 	SwsContext *sws_context = nullptr;
