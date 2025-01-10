@@ -133,6 +133,12 @@ private:
 
 	Mutex audio_buffer_mutex;
 
+	void initialize_udp_socket(int port);
+	void release_udp_socket();
+	static int _udp_read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size);
+	int udp_socket = 0;
+	long long last_fetch_time = 0;
+
 	SwsContext *sws_context = nullptr;
 	SwrContext *swr_context = nullptr;
 	DecoderState decoder_state = DecoderState::READY;

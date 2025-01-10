@@ -116,6 +116,83 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 	return decoder->video_file->get_position();
 }
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/time.h>
+long long get_timestamp(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return (long long)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
+int VideoDecoder::_udp_read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size) {
+	VideoDecoder *decoder = (VideoDecoder *)p_opaque;
+    int udp_socket = decoder->udp_socket;
+
+	// 已经被释放
+	if (udp_socket == 0) {
+        return AVERROR(EIO);
+	}
+
+    // 从UDP套接字接收数据
+    struct sockaddr_in src_addr;
+    socklen_t addr_len = sizeof(src_addr);
+    int read_bytes = recvfrom(udp_socket, p_buf, p_buf_size, 0, (struct sockaddr *)&src_addr, &addr_len);
+
+    if (read_bytes < 0) {
+        // 处理错误
+        perror("recvfrom failed");
+		decoder->release_udp_socket();
+        return AVERROR(EIO);
+    }
+
+	// 如果无数据持续一段时间，则返回错误
+	const int64_t timeout = 1000000; // 1s
+	if (read_bytes != 0) {
+		decoder->last_fetch_time = get_timestamp();
+	}
+	else if (get_timestamp() - decoder->last_fetch_time > timeout) {
+		print_line("No data received for a long time, return EAGAIN");
+		return AVERROR(EAGAIN);
+	}
+
+	return read_bytes;
+}
+
+void VideoDecoder::initialize_udp_socket(int port) {
+	if (udp_socket > 0) {
+		release_udp_socket();
+	}
+
+    udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_socket < 0) {
+        perror("socket creation failed");
+        return;
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    if (bind(udp_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind failed");
+        release_udp_socket();
+        return;
+    }
+}
+void VideoDecoder::release_udp_socket() {
+	if (udp_socket > 0) {
+		close(udp_socket);
+	}
+	udp_socket = 0;
+}
+
 void VideoDecoder::prepare_decoding() {
 	String uri = String("dummy");
 	AVDictionary *opts = nullptr;
@@ -123,26 +200,48 @@ void VideoDecoder::prepare_decoding() {
 
 	if (video_file == nullptr) {
 
-		// if (video_uri.begins_with("udp://")) {
-		// 	av_dict_set(&opts, "buffer_size", "327680", 0);
-		// 	av_dict_set(&opts, "timeout", "3000000", 0); // Timeout setting, exit if no UDP input
-		// 	av_dict_set(&opts, "fifo_size", "1000000", 0); // This parameter needs to be set for UDP playback, otherwise an input I/O error will occur midway
-		// 	// Shorten probe time
-		// 	av_dict_set(&opts, "probesize", "32768", 0);
-		// 	av_dict_set(&opts, "analyzeduration", "500000", 0);
-		// }
-		// else if (video_uri.begins_with("rtsp://")) {
-		// 	av_dict_set(&opts, "buffer_size", "2048000", 0);
-		// 	av_dict_set(&opts, "max_delay", "500000", 0);
-		// 	av_dict_set(&opts, "rtsp_transport", "tcp", 0);
-		// 	av_dict_set(&opts, "stimeout", "3000000", 0); //!< Set timeout to 3 seconds, set the timeout disconnection time in microseconds
-		// }
-		// else if (video_uri.begins_with("file://")) {
-		// 	av_dict_set(&opts, "buffer_size", "2048000", 0);
-		// }
-		// else {
-		// 	ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
-		// }
+		if (video_uri.begins_with("udp://")) {
+			print_line("Custom UDP Start...");
+			av_dict_set(&opts, "buffer_size", "327680", 0);
+			av_dict_set(&opts, "timeout", "3000000", 0); // Timeout setting, exit if no UDP input
+			av_dict_set(&opts, "fifo_size", "1000000", 0); // This parameter needs to be set for UDP playback, otherwise an input I/O error will occur midway
+			// Shorten probe time
+			//av_dict_set(&opts, "probesize", "327680", 0);
+			av_dict_set(&opts, "analyzeduration", "500000", 0);
+
+			PackedStringArray tmp = video_uri.split("://");
+			int port = 0;
+			if (tmp.size() != 2) {
+				ERR_FAIL_MSG(vformat("error udp uri format: %s", video_uri.utf8().get_data()));
+			}
+			PackedStringArray tmp2 = video_uri.split(":");
+			if (tmp.size() != 2) {
+				ERR_FAIL_MSG(vformat("error udp uri format: %s", video_uri.utf8().get_data()));
+			}
+			port = tmp2[1].to_int();
+
+			initialize_udp_socket(port);
+
+			// ffmpeg，直接使用UDP URI，Winodws平台下不被支持，所以由本插件接收，通过AVIO送给ffmpeg
+			avio_seek(io_context, 0, SEEK_SET);
+			if (!io_context) {
+				const int context_buffer_size = 4096;
+				unsigned char *context_buffer = (unsigned char *)av_malloc(context_buffer_size);
+				io_context = avio_alloc_context(context_buffer, context_buffer_size, 0, this, &VideoDecoder::_udp_read_packet_callback, nullptr, nullptr);
+			}
+		}
+		else if (video_uri.begins_with("rtsp://")) {
+			av_dict_set(&opts, "buffer_size", "2048000", 0);
+			av_dict_set(&opts, "max_delay", "500000", 0);
+			av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+			av_dict_set(&opts, "stimeout", "3000000", 0); //!< Set timeout to 3 seconds, set the timeout disconnection time in microseconds
+		}
+		else if (video_uri.begins_with("file://")) {
+			av_dict_set(&opts, "buffer_size", "2048000", 0);
+		}
+		else {
+			ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
+		}
 
 		uri = video_uri.utf8().get_data();
 	}
@@ -156,7 +255,7 @@ void VideoDecoder::prepare_decoding() {
 
 		format_context->pb = io_context;
 	}
-	format_context->flags |= AVFMT_FLAG_GENPTS;
+	//format_context->flags |= AVFMT_FLAG_GENPTS;
 	format_context->video_codec = forced_video_codec;
 
 	int open_input_res = avformat_open_input(&format_context, uri.utf8().get_data(), nullptr, &opts);
@@ -367,6 +466,7 @@ void VideoDecoder::_decode_next_frame(AVPacket *p_packet, AVFrame *p_receive_fra
 		OS::get_singleton()->delay_usec(1000);
 	} else {
 		print_line(vformat("Failed to read data into avcodec packet: %s", ffmpeg_get_error_message(read_frame_result)));
+		decoder_state = DecoderState::END_OF_STREAM;
 	}
 }
 
@@ -808,6 +908,8 @@ VideoDecoder::~VideoDecoder() {
 		thread->join();
 		memdelete(thread);
 	}
+
+	release_udp_socket();
 
 	if (format_context != nullptr && input_opened) {
 		avformat_close_input(&format_context);
