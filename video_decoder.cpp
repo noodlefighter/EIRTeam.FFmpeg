@@ -116,59 +116,92 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 	return decoder->video_file->get_position();
 }
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/time.h>
-long long get_timestamp(void)
-{
-	struct timeval tv;
+#endif
 
-	gettimeofday(&tv, NULL);
-	return (long long)tv.tv_sec * 1000000 + tv.tv_usec;
+#include <stdio.h>
+#include <stdint.h>
+
+long long get_timestamp(void) {
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER uli;
+    uli.LowPart = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+    return (long long)(uli.QuadPart / 10); // Convert to microseconds
+#else
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (long long)tv.tv_sec * 1000000 + tv.tv_usec;
+#endif
 }
 
 int VideoDecoder::_udp_read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size) {
-	VideoDecoder *decoder = (VideoDecoder *)p_opaque;
+    VideoDecoder *decoder = (VideoDecoder *)p_opaque;
+#ifdef _WIN32
+    SOCKET udp_socket = decoder->udp_socket;
+#else
     int udp_socket = decoder->udp_socket;
+#endif
 
-	// 已经被释放
-	if (udp_socket == 0) {
+    // 已经被释放
+    if (udp_socket == 0) {
         return AVERROR(EIO);
-	}
+    }
 
     // 从UDP套接字接收数据
     struct sockaddr_in src_addr;
     socklen_t addr_len = sizeof(src_addr);
-    int read_bytes = recvfrom(udp_socket, p_buf, p_buf_size, 0, (struct sockaddr *)&src_addr, &addr_len);
+    int read_bytes = recvfrom(udp_socket, (char *)p_buf, p_buf_size, 0, (struct sockaddr *)&src_addr, &addr_len);
 
     if (read_bytes < 0) {
         // 处理错误
         perror("recvfrom failed");
-		decoder->release_udp_socket();
+        decoder->release_udp_socket();
         return AVERROR(EIO);
     }
 
-	// 如果无数据持续一段时间，则返回错误
-	const int64_t timeout = 1000000; // 1s
-	if (read_bytes != 0) {
-		decoder->last_fetch_time = get_timestamp();
-	}
-	else if (get_timestamp() - decoder->last_fetch_time > timeout) {
-		print_line("No data received for a long time, return EAGAIN");
-		return AVERROR(EAGAIN);
-	}
+    // 如果无数据持续一段时间，则返回错误
+    const int64_t timeout = 1000000; // 1s
+    if (read_bytes != 0) {
+        decoder->last_fetch_time = get_timestamp();
+    } else if (get_timestamp() - decoder->last_fetch_time > timeout) {
+        print_line("No data received for a long time, return EAGAIN");
+        return AVERROR(EAGAIN);
+    }
 
-	return read_bytes;
+    return read_bytes;
 }
 
 void VideoDecoder::initialize_udp_socket(int port) {
-	if (udp_socket > 0) {
-		release_udp_socket();
-	}
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        perror("WSAStartup failed");
+        return;
+    }
+#endif
 
+    if (udp_socket > 0) {
+        release_udp_socket();
+    }
+
+#ifdef _WIN32
+    udp_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+#else
     udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
+#endif
     if (udp_socket < 0) {
         perror("socket creation failed");
         return;
@@ -186,11 +219,17 @@ void VideoDecoder::initialize_udp_socket(int port) {
         return;
     }
 }
+
 void VideoDecoder::release_udp_socket() {
-	if (udp_socket > 0) {
-		close(udp_socket);
-	}
-	udp_socket = 0;
+    if (udp_socket > 0) {
+#ifdef _WIN32
+        closesocket(udp_socket);
+        WSACleanup();
+#else
+        close(udp_socket);
+#endif
+    }
+    udp_socket = 0;
 }
 
 void VideoDecoder::prepare_decoding() {
