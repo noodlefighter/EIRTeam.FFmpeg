@@ -96,7 +96,7 @@ ifneq (,$(filter $(HOST), Darwin))
 	brew install autoconf automake libtool pkg-config curl cmake gperf groff texinfo yasm nasm bison autogen git wget meson ninja guile
 else ifneq (,$(filter $(HOST), Linux))
 	@echo "Bootstrapping for Linux..."
-	sudo apt install autoconf automake libtool pkg-config curl cmake gperf groff texinfo yasm nasm bison autogen git wget meson ninja rapidjson-dev
+	sudo apt install autoconf automake libtool pkg-config curl cmake gperf groff texinfo yasm nasm bison autogen git wget meson ninja-build rapidjson-dev
 endif
 
 
