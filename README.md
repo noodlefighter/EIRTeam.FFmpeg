@@ -31,6 +31,12 @@ You can also support EIRTeam by donating on [Patreon] or purchasing [Project Hea
 
 [Patreon]: https://www.patreon.com/EIRTeam
 
+# 分支 feature-uri 说明
+
+原版不支持访问网络资源，目的只是播放本地媒体资源，这个分支加入了如rtsp的支持
+
+添加了一个组件FFmpegUriStream，它支持以URI的方式输入需要播放的媒体，从而支持播放网络媒体资源。
+
 
 # Linux下编译笔记
 
