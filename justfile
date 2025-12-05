@@ -1,0 +1,64 @@
+NAS_TMP_DIR:="mj@192.168.1.66:/srv/files/tmp"
+
+default:
+    @just --list
+
+build-win:
+    #!/bin/bash
+
+    # 1. 检测x86_64-w64-mingw32-gcc-posix命令是否存在
+    if ! command -v x86_64-w64-mingw32-gcc-posix &> /dev/null; then
+        echo "错误: x86_64-w64-mingw32-gcc-posix 命令未找到"
+        echo "请安装 mingw-w64 包："
+        echo "  Ubuntu/Debian: sudo apt install mingw-w64"
+        echo "  CentOS/RHEL: sudo yum install mingw64-gcc"
+        echo "  Arch Linux: sudo pacman -S mingw-w64-gcc"
+        exit 1
+    fi
+
+    echo "✓ 找到 x86_64-w64-mingw32-gcc-posix 编译器"
+
+    # 2. 将windows.py覆盖gdextension_build/godot-cpp/tools/windows.py
+    if [ -f "windows.py" ]; then
+        cp windows.py gdextension_build/godot-cpp/tools/windows.py
+        echo "✓ 已更新 gdextension_build/godot-cpp/tools/windows.py"
+    else
+        echo "警告: 当前目录下未找到 windows.py 文件"
+    fi
+
+    # 3. 检查ffmpeg-n6.1-latest-win64-lgpl-shared-6.1文件夹是否存在
+    if [ ! -d "ffmpeg-n6.1-latest-win64-lgpl-shared-6.1" ]; then
+        echo "FFmpeg Windows构建包未找到，开始下载..."
+
+        # 检查zip文件是否存在
+        if [ ! -f "ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip" ]; then
+            echo "正在下载 FFmpeg Windows构建包..."
+            wget https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip
+            if [ $? -ne 0 ]; then
+                echo "错误: FFmpeg下载失败"
+                exit 1
+            fi
+        fi
+
+        echo "正在解压 FFmpeg..."
+        unzip ffmpeg-n6.1-latest-win64-lgpl-shared-6.1.zip
+        if [ $? -ne 0 ]; then
+            echo "错误: FFmpeg解压失败"
+            exit 1
+        fi
+
+        echo "✓ FFmpeg Windows构建包准备完成"
+    else
+        echo "✓ FFmpeg Windows构建包已存在"
+    fi
+
+    # 执行构建
+    echo "开始构建 Windows版本..."
+    cd gdextension_build
+    scons platform=windows ffmpeg_path=../ffmpeg-n6.1-latest-win64-lgpl-shared-6.1
+
+build-linux:
+    ./build.sh
+
+sync:
+    rsync -r gdextension_build/build/addons {{NAS_TMP_DIR}}
