@@ -58,7 +58,42 @@ build-win:
     scons platform=windows ffmpeg_path=../ffmpeg-n6.1-latest-win64-lgpl-shared-6.1
 
 build-linux:
-    ./build.sh
+    #!/bin/bash
+
+    if [ ! -d "thirdparty/ffmpeg/linux/x86_64" ]; then
+        echo "FFmpeg Windows构建包未找到，开始下载..."
+
+        # 检查压缩包是否存在
+        if [ ! -f "ffmpeg-linux.tar.xz" ]; then
+            echo "正在下载 FFmpeg Linux构建包..."
+            wget https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-12-07-12-56/ffmpeg-N-122015-g6a14a93af5-linux64-lgpl-shared.tar.xz -O ffmpeg-linux.tar.xz
+            if [ $? -ne 0 ]; then
+                echo "错误: FFmpeg下载失败"
+                exit 1
+            fi
+        fi
+
+        echo "正在解压 FFmpeg..."
+        tar -xf ffmpeg-linux.tar.xz
+        if [ $? -ne 0 ]; then
+            echo "错误: FFmpeg解压失败"
+            exit 1
+        fi
+
+        echo "✓ FFmpeg Linux构建包准备完成"
+    else
+        echo "✓ FFmpeg Linux构建包已存在"
+    fi
+
+    ./build.sh \
+        all \
+        linux \
+        4.4.0 \
+        thirdparty/ffmpeg/linux/x86_64 \
+        https://foo \
+        ffmpeg-linux.tar.xz \
+        true
+
 
 sync:
     rsync -r gdextension_build/build/addons/ffmpeg/ {{NAS_TMP_DIR}}
