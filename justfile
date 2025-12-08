@@ -59,14 +59,20 @@ build-win:
 
 build-linux:
     #!/bin/bash
+    set -e
+
+    ffmpeg_name="ffmpeg-N-122015-g6a14a93af5-linux64-lgpl-shared"
+    ffmpeg_url="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-12-07-12-56/ffmpeg-N-122015-g6a14a93af5-linux64-lgpl-shared.tar.xz"
+    ffmpeg_tarball="ffmpeg-linux.tar.xz"
+    ffmpeg_bin_dir="thirdparty/ffmpeg/linux/x86_64"
 
     if [ ! -d "thirdparty/ffmpeg/linux/x86_64" ]; then
-        echo "FFmpeg Windows构建包未找到，开始下载..."
+        echo "FFmpeg Linux构建包未找到，开始下载..."
 
         # 检查压缩包是否存在
-        if [ ! -f "ffmpeg-linux.tar.xz" ]; then
+        if [ ! -f ${ffmpeg_tarball} ]; then
             echo "正在下载 FFmpeg Linux构建包..."
-            wget https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-12-07-12-56/ffmpeg-N-122015-g6a14a93af5-linux64-lgpl-shared.tar.xz -O ffmpeg-linux.tar.xz
+            wget https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-12-07-12-56/ffmpeg-N-122015-g6a14a93af5-linux64-lgpl-shared.tar.xz -O ${ffmpeg_tarball}
             if [ $? -ne 0 ]; then
                 echo "错误: FFmpeg下载失败"
                 exit 1
@@ -74,7 +80,10 @@ build-linux:
         fi
 
         echo "正在解压 FFmpeg..."
-        tar -xf ffmpeg-linux.tar.xz
+        tar -xvf ${ffmpeg_tarball}
+        mkdir -p ${ffmpeg_bin_dir}
+        cp -r ${ffmpeg_name}/* ${ffmpeg_bin_dir}
+
         if [ $? -ne 0 ]; then
             echo "错误: FFmpeg解压失败"
             exit 1
