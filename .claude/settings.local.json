@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec list:*)",
+      "Bash(openspec validate:*)",
+      "Bash(openspec show:*)",
+      "Bash(just build-linux:*)",
+      "Bash(scons --help:*)",
+      "Bash(../venv/bin/scons:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
