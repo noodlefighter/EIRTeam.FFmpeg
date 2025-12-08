@@ -54,3 +54,12 @@ $ just build-win
 ```
 
 编译好的插件在`gdextension_build/build/`里，拷出来就能用。
+
+# FFmpeg版本的更新方法
+
+关键的地方：
+
+- justfile里的下载地址
+- ffmpeg_download.py里的ffmpeg_versions
+- ffmpeg.gdextension里各平台的文件列表
+

@@ -7,7 +7,7 @@ set -e
 TARGET=${1:-"all"}
 PLATFORM=${2:-"linux"}
 SCONS_VERSION=${3:-"4.4.0"}
-FFMPEG_RELATIVE_PATH="thirdparty/ffmpeg/linux/x86_64"
+FFMPEG_RELATIVE_PATH=${4:-"ffmpeg-master-latest-linux64-lgpl-godot"}
 FFMPEG_URL_OR_PATH=${5:-"https://github.com/EIRTeam/FFmpeg-Builds/releases/\
 download/latest/${FFMPEG_RELATIVE_PATH}.tar.xz"}
 FFMPEG_TARBALL_PATH=${6:-"ffmpeg.tar.xz"}
@@ -115,7 +115,7 @@ cleanup() {
     echo "The built addons folder is located at '${OUTPUT_DIR}'."
 }
 
-# setup
+setup
 
 if [ "${TARGET}" == "all" ]; then
     for target in "editor" "template_release" "template_debug"; do
