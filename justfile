@@ -1,4 +1,4 @@
-NAS_TMP_DIR:="mj@192.168.1.66:/srv/files/tmp"
+NAS_TMP_DIR:="r@r-lh.v:/home/r/proj/uav/uav-app/addons/ffmpeg/"
 
 default:
     @just --list
@@ -61,4 +61,4 @@ build-linux:
     ./build.sh
 
 sync:
-    rsync -r gdextension_build/build/addons {{NAS_TMP_DIR}}
+    rsync -r gdextension_build/build/addons/ffmpeg/ {{NAS_TMP_DIR}}

@@ -53,6 +53,8 @@ using namespace godot;
 #endif
 
 #include "video_decoder.h"
+#include "player_state.h"
+#include <thread>
 
 class YUVGPUConverter : public RefCounted {
 	RID shader;
@@ -96,10 +98,21 @@ public:
 class FFmpegVideoStreamPlayback : public VideoStreamPlayback {
 	GDCLASS(FFmpegVideoStreamPlayback, VideoStreamPlayback);
 
+private:
+	// 线程安全状态管理
+	Ref<PlayerStateManager> state_manager;
+	PlaybackCommandQueue command_queue;
+
+	// 播放控制工作线程
+	std::thread *playback_thread = nullptr;
+	SafeFlag playback_thread_abort;
+
+	// 缓冲区和帧管理
 	const int LENIENCE_BEFORE_SEEK = 2500;
 	double playback_position = 0.0f;
 
 	Ref<VideoDecoder> decoder;
+	Mutex frame_mutex;
 	List<Ref<DecodedFrame>> available_frames;
 	List<Ref<DecodedAudioFrame>> available_audio_frames;
 	Ref<DecodedFrame> last_frame;
@@ -109,18 +122,32 @@ class FFmpegVideoStreamPlayback : public VideoStreamPlayback {
 	Ref<Image> last_frame_image;
 	Ref<ImageTexture> texture;
 	Ref<Texture2DRD> yuv_texture;
+
+	// 配置
 	bool looping = false;
 	bool buffering = false;
+	bool playing = false;
 	int frames_processed = 0;
+	bool just_seeked = false;
+
+	Ref<YUVGPUConverter> yuv_converter;
+
+	// 工作线程方法
+	static void _playback_thread_func(void *userdata);
+	void _process_commands();
+	void _process_playback_command(const PlaybackCommand& command);
+	void _update_decoder_state();
+	void _handle_decoder_events();
+
+	// 内部方法
 	void seek_into_sync();
 	double get_current_frame_time();
 	bool check_next_frame_valid(Ref<DecodedFrame> p_decoded_frame);
 	bool check_next_audio_frame_valid(Ref<DecodedAudioFrame> p_decoded_frame);
-	bool paused = false;
-	bool playing = false;
-	bool just_seeked = false;
 
-	Ref<YUVGPUConverter> yuv_converter;
+	// 性能监控
+	std::chrono::steady_clock::time_point last_update_time;
+	std::chrono::steady_clock::time_point last_frame_time;
 
 private:
 	bool is_paused_internal() const;
@@ -158,6 +185,7 @@ public:
 	STREAM_FUNC_REDIRECT_0_CONST(int, get_mix_rate);
 	STREAM_FUNC_REDIRECT_0_CONST(int, get_channels);
 	FFmpegVideoStreamPlayback();
+	~FFmpegVideoStreamPlayback();
 };
 
 class FFmpegVideoStream : public VideoStream {

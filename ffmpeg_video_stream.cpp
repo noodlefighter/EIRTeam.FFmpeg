@@ -30,6 +30,7 @@
 
 #include "ffmpeg_video_stream.h"
 #include <iterator>
+#include <chrono>
 
 #ifdef GDEXTENSION
 #include "gdextension_build/gdex_print.h"
@@ -137,169 +138,146 @@ const char *const upd_str = "update_internal";
 void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 	ZoneScopedN("update_internal");
 
-	if (paused || !playing) {
+	// 使用新的状态管理器，主线程只需进行非阻塞的状态检查和渲染更新
+	if (!state_manager.is_valid()) {
 		return;
 	}
 
-	#ifndef LIVE_STREAM
-	playback_position += p_delta * 1000.0f;
+	PlayerState current_state = state_manager->get_state();
+	if (current_state == PlayerState::STOPPED || current_state == PlayerState::FAULTED) {
+		return;
+	}
 
-	if (decoder->get_decoder_state() == VideoDecoder::DecoderState::END_OF_STREAM && available_frames.size() == 0) {
-		// if at the end of the stream but our playback enters a valid time region again, a seek operation is required to get the decoder back on track.
-		if (playback_position < decoder->get_last_decoded_frame_time()) {
-			seek_into_sync();
-		} else {
-			playing = false;
+	// 性能监控 - 确保update_internal执行时间不超过2ms
+	auto update_start = std::chrono::steady_clock::now();
+
+	// 处理状态管理器中的事件
+	LocalVector<PlaybackEvent> events = state_manager->get_and_clear_events();
+	for (const PlaybackEvent& event : events) {
+		switch (event.type) {
+			case PlaybackEventType::END_OF_STREAM:
+				// 流结束事件已经由工作线程处理
+				break;
+
+			case PlaybackEventType::ERROR_OCCURRED:
+				// 记录错误信息
+				ERR_PRINT("Video playback error: " + event.error_message);
+				break;
+
+			default:
+				break;
 		}
 	}
 
-	Ref<DecodedFrame> peek_frame = available_frames.size() > 0 ? available_frames.front()->get() : nullptr;
-	bool out_of_sync = false;
+	// 非阻塞地获取解码帧
+	if (decoder.is_valid() && state_manager->is_playing_state()) {
+		// 获取新解码的帧，非阻塞操作
+		Vector<Ref<DecodedFrame>> decoded_frames = decoder->get_decoded_frames();
+		if (!decoded_frames.is_empty()) {
+			MutexLock lock(frame_mutex);
 
-	if (peek_frame.is_valid()) {
-		out_of_sync = Math::abs(playback_position - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
+			// 选择最合适的帧进行渲染
+			Ref<DecodedFrame> best_frame = nullptr;
+			double current_pos = state_manager->get_position();
 
-		if (looping) {
-			out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
-					Math::abs(playback_position + decoder->get_duration() - peek_frame->get_time()) > LENIENCE_BEFORE_SEEK;
-		}
-	}
+			for (const Ref<DecodedFrame>& frame : decoded_frames) {
+				if (frame.is_valid()) {
+					// 找到最接近当前播放位置的帧
+					if (!best_frame.is_valid() || Math::abs(frame->get_time() - current_pos) < Math::abs(best_frame->get_time() - current_pos)) {
+						best_frame = frame;
+					}
+				}
+			}
 
-	if (out_of_sync) {
-		print_line(vformat("Video too far out of sync (%.2f), seeking to %.2f", peek_frame->get_time(), playback_position));
-		seek_into_sync();
-	}
+			if (best_frame.is_valid() && best_frame != last_frame) {
+				// 释放上一帧
+				if (last_frame.is_valid()) {
+					decoder->return_frame(last_frame);
+				}
 
-	double frame_time = get_current_frame_time();
-
-	bool got_new_frame = false;
-
-	List<Ref<DecodedFrame>>::Element *next_frame = available_frames.front();
-	while (next_frame && (check_next_frame_valid(next_frame->get()) || just_seeked)) {
-		ZoneNamedN(__frame_receive, "frame_receive", true);
-
-		just_seeked = false;
-
-		if (last_frame.is_valid()) {
-			decoder->return_frame(last_frame);
-		}
-		last_frame = next_frame->get();
-		last_frame_image = last_frame->get_image();
+				// 设置新帧
+				last_frame = best_frame;
+				last_frame_image = last_frame->get_image();
 #ifdef FFMPEG_MT_GPU_UPLOAD
-		last_frame_texture = last_frame->get_texture();
+				last_frame_texture = last_frame->get_texture();
 #endif
-		got_new_frame = true;
-		next_frame = next_frame->next();
-		available_frames.pop_front();
-	}
-	#else // it's LIVE_STREAM
 
-	bool got_new_frame = false;
-	for (Ref<DecodedFrame> frame : decoder->get_decoded_frames()) {
-		last_frame = frame;
-		last_frame_image = last_frame->get_image();
-#ifdef FFMPEG_MT_GPU_UPLOAD
-		last_frame_texture = last_frame->get_texture();
-#endif
-		got_new_frame = true;
-	}
+				// 更新性能指标
+				state_manager->increment_frames_decoded();
+				auto now = std::chrono::steady_clock::now();
+				auto frame_duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_frame_time);
+				last_frame_time = now;
 
-	#endif // LIVE_STREAM
+				// 简单的帧率计算
+				if (frame_duration.count() > 0) {
+					double fps = 1000.0 / frame_duration.count();
+					// 这里可以添加FPS监控日志
+				}
+			}
+		}
+
+		// 处理音频帧
+		Vector<Ref<DecodedAudioFrame>> audio_frames = decoder->get_decoded_audio_frames();
+		if (!audio_frames.is_empty()) {
+			MutexLock lock(frame_mutex);
+			for (const Ref<DecodedAudioFrame>& audio_frame : audio_frames) {
+				available_audio_frames.push_back(audio_frame);
+			}
+		}
+	}
 
 #ifndef FFMPEG_MT_GPU_UPLOAD
-	if (got_new_frame) {
-		// YUV conversion
+	// YUV到RGB转换（主线程中快速处理）
+	if (last_frame.is_valid() && last_frame_image.is_valid()) {
 		if (last_frame->get_format() == FFmpegFrameFormat::YUV420P || last_frame->get_format() == FFmpegFrameFormat::YUVA420P) {
 			Ref<Image> y_plane = last_frame->get_yuv_image_plane(0);
 			Ref<Image> u_plane = last_frame->get_yuv_image_plane(1);
 			Ref<Image> v_plane = last_frame->get_yuv_image_plane(2);
 			Ref<Image> a_plane = last_frame->get_yuv_image_plane(3);
 
-			ERR_FAIL_COND(!y_plane.is_valid());
-			ERR_FAIL_COND(!u_plane.is_valid());
-			ERR_FAIL_COND(!v_plane.is_valid());
-
-			yuv_converter->set_plane_image(0, y_plane);
-			yuv_converter->set_plane_image(1, u_plane);
-			yuv_converter->set_plane_image(2, v_plane);
-			yuv_converter->set_plane_image(3, a_plane);
-			yuv_converter->convert();
-			// RGBA texture handling
+			if (y_plane.is_valid() && u_plane.is_valid() && v_plane.is_valid()) {
+				yuv_converter->set_plane_image(0, y_plane);
+				yuv_converter->set_plane_image(1, u_plane);
+				yuv_converter->set_plane_image(2, v_plane);
+				yuv_converter->set_plane_image(3, a_plane);
+				yuv_converter->convert();
+			}
 		} else if (texture.is_valid()) {
 			if (texture->get_size() != last_frame_image->get_size() || texture->get_format() != last_frame_image->get_format()) {
-				ZoneNamedN(__img_upate_slow, "Image update slow", true);
-				texture->set_image(last_frame_image); // should never happen, but life has many doors ed-boy...
+				ZoneNamedN(__img_update_slow, "Image update slow", true);
+				texture->set_image(last_frame_image);
 			} else {
-				ZoneNamedN(__img_upate_fast, "Image update fast", true);
+				ZoneNamedN(__img_update_fast, "Image update fast", true);
 				texture->update(last_frame_image);
 			}
 		}
 	}
 #endif
 
-	#ifndef LIVE_STREAM
-	if (available_frames.size() == 0) {
-		for (Ref<DecodedFrame> frame : decoder->get_decoded_frames()) {
-			available_frames.push_back(frame);
-		}
+	// 性能监控检查
+	auto update_end = std::chrono::steady_clock::now();
+	auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start);
+	if (update_duration.count() > 2000) { // 超过2ms
+		// 记录性能警告
+		print_line(vformat("Warning: update_internal took %ld microseconds", update_duration.count()));
 	}
-
-	Ref<DecodedAudioFrame> peek_audio_frame;
-	if (available_audio_frames.size() > 0) {
-		peek_audio_frame = available_audio_frames.front()->get();
-	}
-
-	bool audio_out_of_sync = false;
-
-	if (peek_audio_frame.is_valid()) {
-		audio_out_of_sync = Math::abs(playback_position - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
-
-		if (looping) {
-			out_of_sync &= Math::abs(playback_position - decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK &&
-					Math::abs(playback_position + decoder->get_duration() - peek_audio_frame->get_time()) > LENIENCE_BEFORE_SEEK;
-		}
-	}
-
-	if (audio_out_of_sync) {
-		// TODO: seek audio stream individually if it desyncs
-	}
-	#endif // LIVE_STREAM
-
-	List<Ref<DecodedAudioFrame>>::Element *next_audio_frame = available_audio_frames.front();
-	while (next_audio_frame && check_next_audio_frame_valid(next_audio_frame->get())) {
-		ZoneNamedN(__audio_mix, "Audio mix", true);
-		Ref<DecodedAudioFrame> audio_frame = next_audio_frame->get();
-		int sample_count = audio_frame->get_sample_data().size() / decoder->get_audio_channel_count();
-#ifdef GDEXTENSION
-		mix_audio(sample_count, audio_frame->get_sample_data(), 0);
-#else
-		mix_callback(mix_udata, audio_frame->get_sample_data().ptr(), sample_count);
-#endif
-		next_audio_frame = next_audio_frame->next();
-		available_audio_frames.pop_front();
-	}
-	if (available_audio_frames.size() == 0) {
-		for (Ref<DecodedAudioFrame> frame : decoder->get_decoded_audio_frames()) {
-			available_audio_frames.push_back(frame);
-		}
-	}
-
-	buffering = decoder->is_running() && available_frames.size() == 0;
-
-	#ifndef LIVE_STREAM
-	if (frame_time != get_current_frame_time()) {
-		frames_processed++;
-	}
-	#endif
 }
 
 Error FFmpegVideoStreamPlayback::load_internal() {
-	decoder->start_decoding();
-	Vector2i size = decoder->get_size();
-	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
+	if (!decoder.is_valid()) {
 		return FAILED;
 	}
 
+	// 初始化解码器
+	Vector2i size = decoder->get_size();
+	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
+		if (state_manager.is_valid()) {
+			state_manager->set_error(PlayerError::DECODER_ERROR, "Decoder initialization failed");
+		}
+		return FAILED;
+	}
+
+	// 创建纹理转换器
 	if (decoder->get_frame_format() == FFmpegFrameFormat::YUV420P || decoder->get_frame_format() == FFmpegFrameFormat::YUVA420P) {
 		yuv_converter.instantiate();
 		yuv_converter->set_frame_size(size);
@@ -311,63 +289,75 @@ Error FFmpegVideoStreamPlayback::load_internal() {
 		texture = ImageTexture::create_from_image(Image::create_empty(size.x, size.y, false, Image::FORMAT_RGBA8));
 #endif
 	}
+
+	// 更新状态为已加载
+	if (state_manager.is_valid()) {
+		state_manager->set_state(PlayerState::STOPPED);
+	}
+
 	return OK;
 }
 
 Error FFmpegVideoStreamPlayback::load(Ref<FileAccess> p_file_access) {
+	// 创建解码器
 	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(p_file_access)));
-	return load_internal();
+	Error result = load_internal();
+
+	// 如果加载成功，重置状态管理器
+	if (result == OK && state_manager.is_valid()) {
+		state_manager->reset_performance_metrics();
+	}
+
+	return result;
 }
 
 Error FFmpegVideoStreamPlayback::load(String uri) {
+	// 通过命令队列异步加载URI
+	if (state_manager.is_valid()) {
+		command_queue.push_command(PlaybackCommand::set_uri(uri));
+		return OK;
+	}
+
+	// 如果状态管理器尚未初始化，直接创建解码器
 	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(uri)));
 	return load_internal();
 }
 
 bool FFmpegVideoStreamPlayback::is_paused_internal() const {
-	return paused;
+	if (state_manager.is_valid()) {
+		return state_manager->get_state() == PlayerState::PAUSED;
+	}
+	return false;
 }
 
 bool FFmpegVideoStreamPlayback::is_playing_internal() const {
-	return playing;
+	if (state_manager.is_valid()) {
+		return state_manager->is_playing_state();
+	}
+	return false;
 }
 
 void FFmpegVideoStreamPlayback::set_paused_internal(bool p_paused) {
-	paused = p_paused;
+	if (p_paused) {
+		command_queue.push_command(PlaybackCommand::pause());
+	} else {
+		command_queue.push_command(PlaybackCommand::resume());
+	}
 }
 
 void FFmpegVideoStreamPlayback::play_internal() {
-	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
-		playing = false;
-		return;
-	}
-	clear();
-	playback_position = 0;
-	decoder->seek(0, true);
-	just_seeked = true;
-	playing = true;
+	// 异步发送播放命令到工作线程
+	command_queue.push_command(PlaybackCommand::play());
 }
 
 void FFmpegVideoStreamPlayback::stop_internal() {
-	if (playing) {
-		clear();
-		playback_position = 0.0f;
-		decoder->seek(playback_position, true);
-		just_seeked = true;
-		texture.unref();
-	}
-	if (yuv_converter.is_valid()) {
-		yuv_converter->clear_output_texture();
-	}
-	playing = false;
+	// 异步发送停止命令到工作线程
+	command_queue.push_command(PlaybackCommand::stop());
 }
 
 void FFmpegVideoStreamPlayback::seek_internal(double p_time) {
-	decoder->seek(p_time * 1000.0f);
-	just_seeked = true;
-	available_frames.clear();
-	available_audio_frames.clear();
-	playback_position = p_time * 1000.0f;
+	// 异步发送跳转命令到工作线程
+	command_queue.push_command(PlaybackCommand::seek(p_time * 1000.0f));
 }
 
 double FFmpegVideoStreamPlayback::get_length_internal() const {
@@ -386,6 +376,9 @@ Ref<Texture2D> FFmpegVideoStreamPlayback::get_texture_internal() const {
 }
 
 double FFmpegVideoStreamPlayback::get_playback_position_internal() const {
+	if (state_manager.is_valid()) {
+		return state_manager->get_position() / 1000.0;
+	}
 	return playback_position / 1000.0;
 }
 
@@ -398,6 +391,28 @@ int FFmpegVideoStreamPlayback::get_channels_internal() const {
 }
 
 FFmpegVideoStreamPlayback::FFmpegVideoStreamPlayback() {
+	// 初始化状态管理器
+	state_manager.instantiate();
+
+	// 初始化性能监控时间
+	last_update_time = std::chrono::steady_clock::now();
+	last_frame_time = std::chrono::steady_clock::now();
+
+	// 创建播放控制工作线程
+	playback_thread = memnew(std::thread(_playback_thread_func, this));
+}
+
+FFmpegVideoStreamPlayback::~FFmpegVideoStreamPlayback() {
+	// 停止播放控制工作线程
+	if (playback_thread && playback_thread->joinable()) {
+		// 发送终止命令
+		command_queue.push_command(PlaybackCommand::terminate());
+
+		// 等待线程结束
+		playback_thread->join();
+		memdelete(playback_thread);
+		playback_thread = nullptr;
+	}
 }
 
 void FFmpegVideoStreamPlayback::clear() {
@@ -674,4 +689,205 @@ void YUVGPUConverter::clear_output_texture() {
 
 YUVGPUConverter::YUVGPUConverter() {
 	out_texture.instantiate();
+}
+
+// FFmpegVideoStreamPlayback 工作线程函数实现
+void FFmpegVideoStreamPlayback::_playback_thread_func(void *userdata) {
+	FFmpegVideoStreamPlayback *playback = static_cast<FFmpegVideoStreamPlayback*>(userdata);
+
+	while (!playback->playback_thread_abort.is_set()) {
+		// 处理命令队列
+		playback->_process_commands();
+
+		// 更新解码器状态
+		playback->_update_decoder_state();
+
+		// 处理解码器事件
+		playback->_handle_decoder_events();
+
+		// 短暂休眠以避免CPU占用过高
+		OS::get_singleton()->delay_usec(1000); // 1ms
+	}
+}
+
+void FFmpegVideoStreamPlayback::_process_commands() {
+	PlaybackCommand command;
+	while (command_queue.pop_command(command)) {
+		_process_playback_command(command);
+	}
+}
+
+void FFmpegVideoStreamPlayback::_process_playback_command(const PlaybackCommand& command) {
+	switch (command.type) {
+		case PlaybackCommandType::PLAY:
+			if (state_manager->get_state() == PlayerState::STOPPED || state_manager->get_state() == PlayerState::FAULTED) {
+				state_manager->set_state(PlayerState::STARTING);
+
+				if (decoder.is_valid()) {
+					playback_position = 0.0;
+					decoder->seek(0.0, true);
+					decoder->start_decoding();
+					state_manager->set_state(PlayerState::PLAYING);
+				} else {
+					state_manager->set_error(PlayerError::INVALID_URI, "No media loaded");
+				}
+			}
+			break;
+
+		case PlaybackCommandType::STOP:
+			if (state_manager->is_playing_state()) {
+				state_manager->set_state(PlayerState::STOPPING);
+
+				if (decoder.is_valid()) {
+					decoder->seek(0.0, true);
+				}
+
+				// 清理帧缓冲区
+				{
+					MutexLock lock(frame_mutex);
+					available_frames.clear();
+					available_audio_frames.clear();
+					last_frame.unref();
+					last_frame_texture.unref();
+					last_frame_image.unref();
+				}
+
+				if (yuv_converter.is_valid()) {
+					yuv_converter->clear_output_texture();
+				}
+
+				playback_position = 0.0;
+				texture.unref();
+				frames_processed = 0;
+
+				state_manager->set_state(PlayerState::STOPPED);
+			}
+			break;
+
+		case PlaybackCommandType::PAUSE:
+			if (state_manager->get_state() == PlayerState::PLAYING) {
+				state_manager->set_state(PlayerState::PAUSED);
+			}
+			break;
+
+		case PlaybackCommandType::RESUME:
+			if (state_manager->get_state() == PlayerState::PAUSED) {
+				state_manager->set_state(PlayerState::PLAYING);
+			}
+			break;
+
+		case PlaybackCommandType::SEEK:
+			if (decoder.is_valid() && state_manager->is_playing_state()) {
+				state_manager->set_state(PlayerState::SEEKING);
+
+				// 清理当前帧缓冲区
+				{
+					MutexLock lock(frame_mutex);
+					available_frames.clear();
+					available_audio_frames.clear();
+				}
+
+				playback_position = command.timestamp;
+				decoder->seek(command.timestamp, true);
+				just_seeked = true;
+
+				state_manager->set_state(PlayerState::PLAYING);
+			}
+			break;
+
+		case PlaybackCommandType::SET_URI:
+			// 停止当前播放
+			_process_playback_command(PlaybackCommand::stop());
+
+			// 设置新的URI
+			if (decoder.is_valid()) {
+				decoder->return_frames(decoder->get_decoded_frames());
+				decoder.unref();
+			}
+
+			// 使用URI构造新的decoder
+			decoder = Ref<VideoDecoder>(memnew(VideoDecoder(command.uri)));
+			if (decoder->get_decoder_state() != VideoDecoder::FAULTED) {
+				state_manager->set_state(PlayerState::STOPPED);
+			} else {
+				state_manager->set_error(PlayerError::INVALID_URI, "Failed to load media: " + command.uri);
+			}
+			break;
+
+		case PlaybackCommandType::TERMINATE:
+			_process_playback_command(PlaybackCommand::stop());
+			playback_thread_abort.set();
+			break;
+
+		default:
+			break;
+	}
+}
+
+void FFmpegVideoStreamPlayback::_update_decoder_state() {
+	if (!decoder.is_valid()) {
+		return;
+	}
+
+	VideoDecoder::DecoderState decoder_state = decoder->get_decoder_state();
+	PlayerState current_state = state_manager->get_state();
+
+	switch (decoder_state) {
+		case VideoDecoder::FAULTED:
+			if (current_state != PlayerState::FAULTED) {
+				state_manager->set_error(PlayerError::DECODER_ERROR, "Video decoder faulted");
+			}
+			break;
+
+		case VideoDecoder::END_OF_STREAM:
+			if (current_state == PlayerState::PLAYING) {
+				// 添加流结束事件
+				PlaybackEvent event = PlaybackEvent::end_of_stream();
+				state_manager->add_event(event);
+
+				if (looping) {
+					// 循环播放
+					_process_playback_command(PlaybackCommand::seek(0.0));
+				} else {
+					_process_playback_command(PlaybackCommand::stop());
+				}
+			}
+			break;
+
+		case VideoDecoder::RUNNING:
+			// 更新播放位置
+			if (current_state == PlayerState::PLAYING && decoder->get_decoder_state() == VideoDecoder::RUNNING) {
+				double last_frame_time = decoder->get_last_decoded_frame_time();
+				if (last_frame_time >= 0) {
+					playback_position = last_frame_time;
+					state_manager->update_position(playback_position);
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
+}
+
+void FFmpegVideoStreamPlayback::_handle_decoder_events() {
+	// 检查是否需要重试
+	PlayerError error = state_manager->get_error();
+	if (error != PlayerError::NONE && state_manager->should_retry()) {
+		_process_playback_command(PlaybackCommand::play());
+	}
+
+	// 处理缓冲区状态
+	if (decoder.is_valid()) {
+		Vector<Ref<DecodedFrame>> decoded_frames = decoder->get_decoded_frames();
+		bool is_buffering = decoded_frames.is_empty() && state_manager->get_state() == PlayerState::PLAYING;
+
+		if (is_buffering) {
+			state_manager->set_state(PlayerState::BUFFERING);
+			state_manager->update_buffering(0.0f);
+		} else if (state_manager->get_state() == PlayerState::BUFFERING && !decoded_frames.is_empty()) {
+			state_manager->set_state(PlayerState::PLAYING);
+			state_manager->update_buffering(100.0f);
+		}
+	}
 }

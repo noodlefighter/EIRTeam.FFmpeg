@@ -36,6 +36,7 @@
 #include "tracy_import.h"
 #include <cstdio>
 #include <iterator>
+#include <chrono>
 
 #ifdef GDEXTENSION
 #include "gdextension_build/gdex_print.h"
@@ -48,6 +49,9 @@ extern "C" {
 }
 
 const int MAX_PENDING_FRAMES = 3;
+
+// VideoDecoder 静态常量定义
+const std::chrono::milliseconds VideoDecoder::DECODE_TIMEOUT_MS(5000); // 5秒超时
 
 bool is_hardware_pixel_format(AVPixelFormat p_fmt) {
 	switch (p_fmt) {
@@ -326,6 +330,24 @@ void VideoDecoder::_thread_func(void *userdata) {
 
 void VideoDecoder::_decode_next_frame(AVPacket *p_packet, AVFrame *p_receive_frame) {
 	ZoneScopedN("Video decoder decode next frame");
+
+	// 开始解码计时
+	auto current_time = std::chrono::steady_clock::now();
+
+	// 检查是否需要重置超时计时器
+	if (current_decode_retries == 0) {
+		decode_start_time = current_time;
+	}
+
+	// 检查解码超时
+	auto decode_duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - decode_start_time);
+	if (decode_duration > DECODE_TIMEOUT_MS) {
+		// 超时，进入错误恢复逻辑
+		decoder_state = DecoderState::FAULTED;
+		ERR_PRINT(vformat("Video decoder timeout after %ld ms", DECODE_TIMEOUT_MS.count()));
+		return;
+	}
+
 	int read_frame_result = 0;
 
 	if (p_packet->buf == nullptr) {
@@ -334,6 +356,10 @@ void VideoDecoder::_decode_next_frame(AVPacket *p_packet, AVFrame *p_receive_fra
 
 	if (read_frame_result >= 0) {
 		decoder_state = DecoderState::RUNNING;
+
+		// 成功读取帧，重置重试计数器和计时器
+		current_decode_retries = 0;
+		last_successful_decode = current_time;
 
 		bool unref_packet = true;
 
@@ -796,10 +822,22 @@ int VideoDecoder::get_audio_channel_count() const {
 
 VideoDecoder::VideoDecoder(Ref<FileAccess> p_file) {
 	video_file = p_file;
+
+	// 初始化超时相关变量
+	auto now = std::chrono::steady_clock::now();
+	last_successful_decode = now;
+	decode_start_time = now;
+	current_decode_retries = 0;
 }
 
 VideoDecoder::VideoDecoder(String uri) {
 	video_uri = uri;
+
+	// 初始化超时相关变量
+	auto now = std::chrono::steady_clock::now();
+	last_successful_decode = now;
+	decode_start_time = now;
+	current_decode_retries = 0;
 }
 
 VideoDecoder::~VideoDecoder() {

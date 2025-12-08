@@ -167,6 +167,13 @@ private:
 	SafeFlag thread_abort;
 	AVCodec const *forced_video_codec = nullptr;
 
+	// 超时和错误恢复
+	std::chrono::steady_clock::time_point last_successful_decode;
+	std::chrono::steady_clock::time_point decode_start_time;
+	static const std::chrono::milliseconds DECODE_TIMEOUT_MS; // 5秒超时
+	static const int MAX_DECODE_RETRIES = 3;
+	int current_decode_retries = 0;
+
 	bool looping = false;
 
 	static int _read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size);
