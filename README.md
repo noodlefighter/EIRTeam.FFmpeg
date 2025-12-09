@@ -63,3 +63,22 @@ $ just build-win
 - ffmpeg_download.py里的ffmpeg_versions
 - ffmpeg.gdextension里各平台的文件列表
 
+# 画面呈现相关的数据流
+
+1. video_decoder.cpp: decoder读网络流，解码，丢到decoded_frames队列里，可以通过get_decoded_frames()取走
+2. ffmpeg_video_stream.cpp: 外部通过FmpegVideoStreamPlayback::get_texture_internal()，取走材质的引用，只会调用一次
+3. ffmpeg_video_stream.cpp: 循环执行update_internal()
+    - LIVE_STREAM默认是开的，取出decoder->get_decoded_frames()中最后一个帧last_frame_image
+    - texture->update(last_frame_image) 更新材质
+4. 外部通过材质的引用，渲染时呈现材质
+
+# 已知bug
+
+- RTSP播到一半会显示，必现
+
+```
+[rtsp @ 0x7f83bc0017c0] Failed reading RTSP data: End of file
+```
+
+- FFmpegVideoStreamPlayback::load_internal() 中创建材质，把材质大小硬编码了，720x576以外的分辨率会有问题
+
