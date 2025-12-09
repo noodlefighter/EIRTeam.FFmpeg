@@ -295,22 +295,10 @@ void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 
 Error FFmpegVideoStreamPlayback::load_internal() {
 	decoder->start_decoding();
-	Vector2i size = decoder->get_size();
-	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
-		return FAILED;
-	}
-
-	if (decoder->get_frame_format() == FFmpegFrameFormat::YUV420P || decoder->get_frame_format() == FFmpegFrameFormat::YUVA420P) {
-		yuv_converter.instantiate();
-		yuv_converter->set_frame_size(size);
-		yuv_texture = yuv_converter->get_output_texture();
-	} else {
-#ifdef GDEXTENSION
-		texture = ImageTexture::create_from_image(Image::create(size.x, size.y, false, Image::FORMAT_RGBA8));
-#else
-		texture = ImageTexture::create_from_image(Image::create_empty(size.x, size.y, false, Image::FORMAT_RGBA8));
-#endif
-	}
+	// fixme: 这里把材质大小硬编码了
+	//        原先decoder->start_decoding()是阻塞的，获取到头一段视频后取图像的size来创建合适的材质
+	//        但是改成非阻塞了，size在此就无从而知了，当前框架下尚不知道怎么处理比较合适，所以先硬编码
+	texture = ImageTexture::create_from_image(Image::create(720, 576, false, Image::FORMAT_RGBA8));
 	return OK;
 }
 
@@ -374,6 +362,7 @@ double FFmpegVideoStreamPlayback::get_length_internal() const {
 	return decoder->get_duration() / 1000.0f;
 }
 
+// note: 这个函数只会被上层执行一次，取走材质的引用之后就不会再取了，所以播放期间只能更新这个材质，而不能重新创建
 Ref<Texture2D> FFmpegVideoStreamPlayback::get_texture_internal() const {
 #ifdef FFMPEG_MT_GPU_UPLOAD
 	return last_frame_texture;
@@ -675,3 +664,4 @@ void YUVGPUConverter::clear_output_texture() {
 YUVGPUConverter::YUVGPUConverter() {
 	out_texture.instantiate();
 }
+

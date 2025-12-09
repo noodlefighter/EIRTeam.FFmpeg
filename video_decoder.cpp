@@ -264,6 +264,14 @@ Error VideoDecoder::recreate_codec_context() {
 }
 
 void VideoDecoder::_seek_command(double p_target_timestamp) {
+
+	switch (this->decoder_state) {
+		case STARTING:
+		case FAULTED:
+		case STOPPED:
+			return;
+	}
+
 	avcodec_flush_buffers(video_codec_context);
 	av_seek_frame(format_context, video_stream->index, (long)(p_target_timestamp / video_time_base_in_seconds / 1000.0), AVSEEK_FLAG_BACKWARD);
 	// No need to seek the audio stream separately since it is seeked automatically with the video stream
@@ -289,6 +297,25 @@ void VideoDecoder::_thread_func(void *userdata) {
 	CharString str = video_decoding_str.utf8();
 	while (!decoder->thread_abort.is_set()) {
 		switch (decoder->decoder_state) {
+			case STARTING: {
+				// 在后台线程中执行probe过程，避免UI线程阻塞
+				print_line("Starting FFmpeg probe process in background thread");
+				if (decoder->format_context == nullptr) {
+					decoder->prepare_decoding();
+					Error codec_context_create_error = decoder->recreate_codec_context();
+
+					if (decoder->video_stream == nullptr || codec_context_create_error != OK) {
+						print_line("FFmpeg probe failed, setting state to FAULTED");
+						decoder->decoder_state = DecoderState::FAULTED;
+					} else {
+						print_line("FFmpeg probe completed successfully, setting state to RUNNING");
+						decoder->decoder_state = DecoderState::RUNNING;
+					}
+				} else {
+					print_line("Format context already exists, setting state to RUNNING");
+					decoder->decoder_state = DecoderState::RUNNING;
+				}
+			} break;
 			case READY:
 			case RUNNING: {
 				decoder->decoded_frames_mutex.lock();
@@ -308,8 +335,13 @@ void VideoDecoder::_thread_func(void *userdata) {
 				// A Seek() operation will trigger a state change, allowing decoding to potentially start again.
 				OS::get_singleton()->delay_usec(50000);
 			} break;
-			default: {
-				ERR_PRINT("Invalid decoder state");
+			case FAULTED: {
+				// 解码器出错，等待线程退出
+				OS::get_singleton()->delay_usec(100000); // 100ms
+			} break;
+			case STOPPED: {
+				// 解码器已停止，等待线程退出
+				OS::get_singleton()->delay_usec(100000); // 100ms
 			} break;
 		}
 		decoder->decoder_commands.flush_if_pending();
@@ -717,16 +749,9 @@ void VideoDecoder::seek(double p_time, bool p_wait) {
 
 void VideoDecoder::start_decoding() {
 	ERR_FAIL_COND_MSG(thread != nullptr, "Cannot start decoding once already started");
-	if (format_context == nullptr) {
-		prepare_decoding();
-		Error codec_context_create_error = recreate_codec_context();
 
-		if (video_stream == nullptr || codec_context_create_error != OK) {
-			decoder_state = DecoderState::FAULTED;
-			return;
-		}
-	}
-
+	// 设置状态为STARTING，表示probe过程将在后台线程中执行
+	decoder_state = DecoderState::STARTING;
 	thread = memnew(std::thread(_thread_func, this));
 }
 

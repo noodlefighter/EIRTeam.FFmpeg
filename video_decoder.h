@@ -121,6 +121,7 @@ public:
 	};
 	enum DecoderState {
 		READY,
+		STARTING,
 		RUNNING,
 		FAULTED,
 		END_OF_STREAM,
