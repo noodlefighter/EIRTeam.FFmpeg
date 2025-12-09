@@ -143,6 +143,9 @@ void VideoDecoder::prepare_decoding() {
 		// 	ERR_FAIL_MSG(vformat("unsupported uri: %s", video_uri.utf8().get_data()));
 		// }
 
+		av_dict_set(&opts, "fflags", "nobuffer", 0);
+		av_dict_set(&opts, "flags", "low_delay", 0);
+
 		uri = video_uri.utf8().get_data();
 	}
 	else {
