@@ -331,8 +331,6 @@ void FFmpegVideoStreamPlayback::play_internal() {
 	}
 	clear();
 	playback_position = 0;
-	decoder->seek(0, true);
-	just_seeked = true;
 	playing = true;
 }
 

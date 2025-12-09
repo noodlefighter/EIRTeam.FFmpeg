@@ -266,10 +266,35 @@ Error VideoDecoder::recreate_codec_context() {
 void VideoDecoder::_seek_command(double p_target_timestamp) {
 
 	switch (this->decoder_state) {
-		case STARTING:
+		case STARTING: {
+			// 等待解码器从STARTING状态变为RUNNING或FAULTED
+			// 设置一个合理的超时时间，避免无限等待
+			int wait_count = 0;
+			const int max_wait_count = 500; // 最多等待500 * 1ms = 500ms
+			while (this->decoder_state == STARTING && !thread_abort.is_set() && wait_count < max_wait_count) {
+				OS::get_singleton()->delay_usec(1000); // 等待1ms
+				wait_count++;
+			}
+
+			// 如果等待后状态仍不正确，则退出
+			if (this->decoder_state != RUNNING) {
+				return;
+			}
+			break;
+		}
 		case FAULTED:
 		case STOPPED:
 			return;
+		case READY:
+		case RUNNING:
+		case END_OF_STREAM:
+			// 这些状态可以正常处理seek
+			break;
+	}
+
+	// 确保format_context和video_stream存在
+	if (!format_context || !video_stream) {
+		return;
 	}
 
 	avcodec_flush_buffers(video_codec_context);

@@ -119,6 +119,7 @@ class FFmpegVideoStreamPlayback : public VideoStreamPlayback {
 	bool paused = false;
 	bool playing = false;
 	bool just_seeked = false;
+	bool waiting_for_start = false;
 
 	Ref<YUVGPUConverter> yuv_converter;
 
