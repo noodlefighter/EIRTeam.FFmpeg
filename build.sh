@@ -95,7 +95,7 @@ build() {
     pushd ${BUILD_DIR}
     # Build
     scons \
-        platform=linux target=${TARGET} \
+        platform=${PLATFORM} target=${TARGET} \
         ffmpeg_path=${FFMPEG_PATH} \
         ${SCONS_FLAGS}
     # Show build results

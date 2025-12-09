@@ -16,12 +16,12 @@ macos.release = "res://addons/ffmpeg/macos/libgdffmpeg.macos.template_release.fr
 [dependencies]
 
 windows.x86_64 =
-    {"res://addons/ffmpeg/win64/avcodec-60.dll": "",
-    "res://addons/ffmpeg/win64/avfilter-9.dll": "",
-    "res://addons/ffmpeg/win64/avformat-60.dll": "",
-    "res://addons/ffmpeg/win64/avutil-58.dll": "",
-    "res://addons/ffmpeg/win64/swresample-4.dll": "",
-    "res://addons/ffmpeg/win64/swscale-7.dll": ""}
+    {"res://addons/ffmpeg/win64/avcodec-62.dll": "",
+    "res://addons/ffmpeg/win64/avfilter-11.dll": "",
+    "res://addons/ffmpeg/win64/avformat-62.dll": "",
+    "res://addons/ffmpeg/win64/avutil-60.dll": "",
+    "res://addons/ffmpeg/win64/swresample-6.dll": "",
+    "res://addons/ffmpeg/win64/swscale-9.dll": ""}
 
 linux.x86_64 =
     {"res://addons/ffmpeg/linux64/libavcodec.so.62": "",

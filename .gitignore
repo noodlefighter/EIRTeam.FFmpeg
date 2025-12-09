@@ -384,4 +384,6 @@ $RECYCLE.BIN/
 /ffmpeg-master-latest-linux64-lgpl-godot
 /gdextension_build/scons-cache
 /ffmpeg-n6.1-latest-win64-lgpl-shared-6.1
-/ffmpeg-*-linux64-lgpl-shared
+/ffmpeg-*-*-lgpl-shared
+ffmpeg-linux.tar.xz
+ffmpeg-win64.zip
