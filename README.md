@@ -35,25 +35,43 @@ You can also support EIRTeam by donating on [Patreon] or purchasing [Project Hea
 
 原版不支持访问网络资源，目的只是播放本地媒体资源，这个分支加入了如rtsp的支持
 
+将EIRTEAM裁减过的超小ffmpeg改成了其他人编译的体积较大的版本：
+
+- Win和Linux: https://github.com/BtbN/FFmpeg-Builds
+- Android（这个需要自己编译）: https://github.com/arthenica/ffmpeg-kit
+
 添加了一个组件FFmpegUriStream，它支持以URI的方式输入需要播放的媒体，从而支持播放网络媒体资源。
 
 
 # Linux下编译笔记
 
-将编译到Win和Linux，需要安装交叉编译工具链：
+编译好的插件在`gdextension_build/build/`里，拷出来就能用。
+
+**编译到Linux**
+
+```
+$ just build-linux
+```
+
+**编译到Windows**
+
+需要安装交叉编译工具链：
 
 ```
 $ sudo apt install mingw-w64
 ```
 
-然后就可以用just命令编译了：
+值得注意的是Ubuntu下得用x86_64-w64-mingw32-gcc-posix编译，而Arch系系统用x86_64-w64-mingw32-gcc编译。（justfile中已处理好）
 
 ```
-$ just build-linux
 $ just build-win
 ```
 
-编译好的插件在`gdextension_build/build/`里，拷出来就能用。
+**编译到Android**
+
+```
+$ just build-android
+```
 
 # FFmpeg版本的更新方法
 

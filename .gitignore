@@ -387,3 +387,4 @@ $RECYCLE.BIN/
 /ffmpeg-*-*-lgpl-shared
 ffmpeg-linux.tar.xz
 ffmpeg-win64.zip
+/android-sdk

@@ -142,5 +142,119 @@ build-linux:
         true
 
 
+build-android:
+    #!/bin/bash
+    set -e
+
+    # 1. 检查Java环境
+    java_dir="/usr/lib/jvm/java-25-openjdk"
+    if [ -d "${java_dir}" ]; then
+        echo "✓ 找到 Java 25 OpenJDK"
+        export JAVA_HOME="${java_dir}"
+    else
+        echo "错误: 未找到 /usr/lib/jvm/java-25-openjdk 目录"
+        echo "请手动修改 justfile 中的 JAVA_HOME 路径，要求 JAVA 11 以上版本"
+        echo "或者安装 OpenJDK: sudo apt install openjdk-11-jdk 或更高版本"
+        exit 1
+    fi
+
+    # 2. 检查并安装Android SDK
+    sdk_path="$PWD/android-sdk"
+    if [ ! -d "${sdk_path}" ]; then
+        echo "Android SDK未找到，开始下载..."
+
+        sdk_url="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+        sdk_zipfile="android-cmdline-tools.zip"
+
+        # 检查本地缓存
+        if [ ! -f "${sdk_zipfile}" ]; then
+            echo "正在下载 Android SDK Command Line Tools..."
+            wget "${sdk_url}" -O "${sdk_zipfile}"
+            if [ $? -ne 0 ]; then
+                echo "错误: Android SDK下载失败"
+                exit 1
+            fi
+        else
+            echo "✓ 使用缓存的 Android SDK 压缩包"
+        fi
+
+        echo "正在解压 Android SDK..."
+        mkdir -p android-sdk/cmdline-tools
+        unzip -q "${sdk_zipfile}" -d android-sdk/
+        echo "✓ Android SDK 解压完成"
+
+    else
+        echo "✓ Android SDK 已存在"
+    fi
+
+    echo "正在安装 Android SDK 组件..."
+    yes | android-sdk/cmdline-tools/bin/sdkmanager --sdk_root="${sdk_path}" "platform-tools" "build-tools;30.0.3" "platforms;android-29" "cmdline-tools;latest" "cmake;3.18.1"
+    if [ $? -ne 0 ]; then
+        echo "错误: Android SDK 组件安装失败"
+        exit 1
+    fi
+    echo "✓ Android SDK 组件安装完成"
+
+    # 3. 检查并安装Android NDK
+    ndk_path="${sdk_path}/ndk/23.2.8568313"
+    if [ ! -d "${ndk_path}" ]; then
+        echo "Android NDK未找到，开始下载..."
+
+        ndk_url="https://dl.google.com/android/repository/android-ndk-r23c-linux.zip"
+        ndk_zipfile="android-ndk-r23c-linux.zip"
+        ndk_unzip_folder="android-ndk-r23c"
+
+        # NDK下载页：https://github.com/android/ndk/wiki/Unsupported-Downloads
+
+        # 检查本地缓存
+        if [ ! -f "${ndk_zipfile}" ]; then
+            echo "正在下载 Android NDK..."
+            wget "${ndk_url}" -O "${ndk_zipfile}"
+            if [ $? -ne 0 ]; then
+                echo "错误: Android NDK下载失败"
+                exit 1
+            fi
+        else
+            echo "✓ 使用缓存的 Android NDK 压缩包"
+        fi
+
+        echo "正在解压 Android NDK..."
+        unzip -o -q "${ndk_zipfile}"
+        if [ $? -ne 0 ]; then
+            echo "错误: Android NDK解压失败"
+            exit 1
+        fi
+        echo "✓ Android NDK 解压完成"
+        mkdir -p "$PWD/android-sdk/ndk/"
+        mv "${ndk_unzip_folder}" "${ndk_path}"
+    else
+        echo "✓ Android NDK 已存在"
+    fi
+
+    # 4. 设置环境变量
+    export ANDROID_SDK_ROOT="$PWD/android-sdk"
+    export ANDROID_NDK_HOME="${ndk_path}"
+    export PATH="${ANDROID_SDK_ROOT}/cmake/3.18.1/bin/:$PATH"
+
+    echo "✓ 环境变量设置完成:"
+    echo "  JAVA_HOME=${JAVA_HOME}"
+    echo "  ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+    echo "  ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
+    echo "  PATH=${PATH}"
+
+    # 构建ffmpeg
+    PLATFORM=android TARGET_ARCH=arm64-v8a make ffmpeg
+
+    # 5. 执行godot插件构建
+    echo "开始构建 Android版本..."
+    ./build.sh \
+        all \
+        android \
+        4.4.0 \
+        thirdparty/ffmpeg/android/arm64 \
+        https://foo \
+        foo.tar.xz \
+        true
+
 sync:
     rsync -r gdextension_build/build/addons/ffmpeg/ {{NAS_TMP_DIR}}

@@ -6,7 +6,8 @@
       "Bash(openspec show:*)",
       "Bash(just build-linux:*)",
       "Bash(scons --help:*)",
-      "Bash(../venv/bin/scons:*)"
+      "Bash(../venv/bin/scons:*)",
+      "Bash(just:*)"
     ],
     "deny": [],
     "ask": []
