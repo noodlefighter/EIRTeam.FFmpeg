@@ -54,6 +54,9 @@ using namespace godot;
 
 #include "video_decoder.h"
 
+// 重试间隔常量（毫秒）
+static const double RETRY_INTERVAL_MS = 10000.0; // 10秒重试间隔
+
 class YUVGPUConverter : public RefCounted {
 	RID shader;
 	Ref<Image> yuv_plane_images[4];
@@ -122,6 +125,9 @@ class FFmpegVideoStreamPlayback : public VideoStreamPlayback {
 	bool waiting_for_start = false;
 
 	Ref<YUVGPUConverter> yuv_converter;
+
+	// 重试机制相关变量
+	double retry_timer = 0.0; // 重试计时器
 
 private:
 	bool is_paused_internal() const;

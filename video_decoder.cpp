@@ -317,6 +317,8 @@ void VideoDecoder::_thread_func(void *userdata) {
 	AVPacket *packet = av_packet_alloc();
 	AVFrame *receive_frame = av_frame_alloc();
 
+	print_line("VideoDecoder thread enter...");
+
 #ifdef GDEXTENSION
 	String video_decoding_str = vformat("Video decoding %d", OS::get_singleton()->get_thread_caller_id());
 #else
@@ -381,6 +383,8 @@ void VideoDecoder::_thread_func(void *userdata) {
 	if (decoder->decoder_state != DecoderState::FAULTED) {
 		decoder->decoder_state = DecoderState::STOPPED;
 	}
+
+	print_line("VideoDecoder thread exit...");
 }
 
 void VideoDecoder::_decode_next_frame(AVPacket *p_packet, AVFrame *p_receive_frame) {
@@ -780,7 +784,47 @@ void VideoDecoder::start_decoding() {
 
 	// 设置状态为STARTING，表示probe过程将在后台线程中执行
 	decoder_state = DecoderState::STARTING;
+	thread_abort.set_to(false);
 	thread = memnew(std::thread(_thread_func, this));
+}
+
+void VideoDecoder::stop_decoding() {
+	if (thread != nullptr) {
+		thread_abort.set_to(true);
+		thread->join();
+		memdelete(thread);
+		thread = nullptr;
+	}
+
+	// 清理FFmpeg资源，确保重新启动时能正确重新初始化
+	if (format_context != nullptr && input_opened) {
+		avformat_close_input(&format_context);
+		input_opened = false;
+	}
+
+	if (video_codec_context != nullptr) {
+		avcodec_free_context(&video_codec_context);
+		video_codec_context = nullptr;
+	}
+
+	if (audio_codec_context != nullptr) {
+		avcodec_free_context(&audio_codec_context);
+		audio_codec_context = nullptr;
+	}
+
+	if (sws_context != nullptr) {
+		sws_freeContext(sws_context);
+		sws_context = nullptr;
+	}
+
+	if (swr_context != nullptr) {
+		swr_free(&swr_context);
+		swr_context = nullptr;
+	}
+
+	// 注意：不清理io_context，因为它可能还被文件访问使用
+
+	decoder_state = DecoderState::STOPPED;
 }
 
 void VideoDecoder::return_frames(Vector<Ref<DecodedFrame>> p_frames) {

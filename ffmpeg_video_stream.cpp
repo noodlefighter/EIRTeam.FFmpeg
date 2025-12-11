@@ -137,6 +137,26 @@ const char *const upd_str = "update_internal";
 void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 	ZoneScopedN("update_internal");
 
+	// 检查解码器状态，FAULTED和END_OF_STREAM都需要重试
+	VideoDecoder::DecoderState state = decoder->get_decoder_state();
+	if (state == VideoDecoder::FAULTED || state == VideoDecoder::END_OF_STREAM) {
+		retry_timer += p_delta * 1000.0f; // 转换为毫秒
+		// print_line("detect retry...", vformat("retry_timer:%.3f retry_interval:%.3f", retry_timer, RETRY_INTERVAL_MS));
+		if (retry_timer >= RETRY_INTERVAL_MS) {
+			// 重试时间到，尝试重新播放
+			retry_timer = 0.0;
+			print_line("do retry...");
+
+			// 对于FAULTED和END_OF_STREAM状态，都需要重新启动解码器
+			// END_OF_STREAM状态对于RTSP等流媒体意味着连接断开，需要重新建立连接
+			decoder->stop_decoding();
+			play_internal(); // 重新调用play_internal尝试恢复
+			return;
+		}
+		// 如果还在等待重试，则不继续处理帧
+		return;
+	}
+
 	if (paused || !playing) {
 		return;
 	}
@@ -294,7 +314,6 @@ void FFmpegVideoStreamPlayback::update_internal(double p_delta) {
 }
 
 Error FFmpegVideoStreamPlayback::load_internal() {
-	decoder->start_decoding();
 	// fixme: 这里把材质大小硬编码了
 	//        原先decoder->start_decoding()是阻塞的，获取到头一段视频后取图像的size来创建合适的材质
 	//        但是改成非阻塞了，size在此就无从而知了，当前框架下尚不知道怎么处理比较合适，所以先硬编码
@@ -325,13 +344,11 @@ void FFmpegVideoStreamPlayback::set_paused_internal(bool p_paused) {
 }
 
 void FFmpegVideoStreamPlayback::play_internal() {
-	if (decoder->get_decoder_state() == VideoDecoder::FAULTED) {
-		playing = false;
-		return;
-	}
 	clear();
 	playback_position = 0;
+	retry_timer = 0.0; // 重置重试计时器
 	playing = true;
+	decoder->start_decoding();
 }
 
 void FFmpegVideoStreamPlayback::stop_internal() {
@@ -385,6 +402,7 @@ int FFmpegVideoStreamPlayback::get_channels_internal() const {
 }
 
 FFmpegVideoStreamPlayback::FFmpegVideoStreamPlayback() {
+	retry_timer = 0.0;
 }
 
 void FFmpegVideoStreamPlayback::clear() {

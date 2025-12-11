@@ -199,6 +199,7 @@ public:
 	};
 	void seek(double p_time, bool p_wait = false);
 	void start_decoding();
+	void stop_decoding();
 	Vector<AvailableDecoderInfo> get_available_video_decoders(const AVInputFormat *p_format, AVCodecID p_codec_id, BitField<HardwareVideoDecoder> p_target_decoders);
 	void return_frames(Vector<Ref<DecodedFrame>> p_frames);
 	void return_frame(Ref<DecodedFrame> p_frame);
