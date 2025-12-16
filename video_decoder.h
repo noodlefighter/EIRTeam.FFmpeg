@@ -172,7 +172,7 @@ private:
 
 	static int _read_packet_callback(void *p_opaque, uint8_t *p_buf, int p_buf_size);
 	static int64_t _stream_seek_callback(void *p_opaque, int64_t p_offset, int p_whence);
-	void prepare_decoding();
+	Error prepare_decoding();
 	Error recreate_codec_context();
 	static HardwareVideoDecoder from_av_hw_device_type(AVHWDeviceType p_device_type);
 
@@ -186,6 +186,7 @@ private:
 
 	void _hw_transfer_frame_return(Ref<FFmpegFrame> p_hw_frame);
 	void _scaler_frame_return(Ref<FFmpegFrame> p_hw_frame);
+	void _frame_return_deferred(Ref<FFmpegFrame> p_frame);
 
 	Ref<FFmpegFrame> _ensure_frame_pixel_format(Ref<FFmpegFrame> p_frame, AVPixelFormat p_target_pixel_format);
 	Ref<DecodedFrame> _unwrap_yuv_frame(double p_frame_time, Ref<FFmpegFrame> p_frame, FFmpegFrameFormat p_out_format);

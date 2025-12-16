@@ -115,7 +115,7 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 	return decoder->video_file->get_position();
 }
 
-void VideoDecoder::prepare_decoding() {
+Error VideoDecoder::prepare_decoding() {
 	String uri = String("dummy");
 	AVDictionary *opts = nullptr;
 	format_context = avformat_alloc_context();
@@ -163,15 +163,27 @@ void VideoDecoder::prepare_decoding() {
 
 	int open_input_res = avformat_open_input(&format_context, uri.utf8().get_data(), nullptr, &opts);
 	input_opened = open_input_res >= 0;
-	ERR_FAIL_COND_MSG(!input_opened, vformat("Error opening stream from uri: %s", ffmpeg_get_error_message(open_input_res)));
+	if (!input_opened) {
+		String error_msg = vformat("Error opening stream from uri: %s", ffmpeg_get_error_message(open_input_res));
+		print_line(error_msg);
+		return FAILED;
+	}
 
 	AVCodec *codec = nullptr;
 
 	int find_stream_info_result = avformat_find_stream_info(format_context, nullptr);
-	ERR_FAIL_COND_MSG(find_stream_info_result < 0, vformat("Error finding stream info: %s", ffmpeg_get_error_message(find_stream_info_result)));
+	if (find_stream_info_result < 0) {
+		String error_msg = vformat("Error finding stream info: %s", ffmpeg_get_error_message(find_stream_info_result));
+		print_line(error_msg);
+		return FAILED;
+	}
 
 	int stream_index = av_find_best_stream(format_context, AVMEDIA_TYPE_VIDEO, -1, -1, (const AVCodec **)&codec, 0);
-	ERR_FAIL_COND_MSG(stream_index < 0, vformat("Couldn't find video stream: %s", ffmpeg_get_error_message(stream_index)));
+	if (stream_index < 0) {
+		String error_msg = vformat("Couldn't find video stream: %s", ffmpeg_get_error_message(stream_index));
+		print_line(error_msg);
+		return FAILED;
+	}
 
 	{
 		if (format_context->video_codec == nullptr) {
@@ -181,8 +193,7 @@ void VideoDecoder::prepare_decoding() {
 				forced_video_codec = avcodec_find_decoder_by_name(libvpx_decoder_name.utf8().get_data());
 				if (forced_video_codec != nullptr) {
 					avformat_close_input(&format_context);
-					prepare_decoding();
-					return;
+					return prepare_decoding();
 				}
 			}
 		}
@@ -201,6 +212,8 @@ void VideoDecoder::prepare_decoding() {
 		audio_stream = format_context->streams[audio_stream_index];
 		audio_time_base_in_seconds = audio_stream->time_base.num / (double)audio_stream->time_base.den;
 	}
+
+	return OK;
 }
 
 Error VideoDecoder::recreate_codec_context() {
@@ -228,20 +241,32 @@ Error VideoDecoder::recreate_codec_context() {
 	video_codec_context = avcodec_alloc_context3(decoder);
 	video_codec_context->pkt_timebase = video_stream->time_base;
 
-	ERR_FAIL_COND_V_MSG(video_codec_context == nullptr, FAILED, vformat("Couldn't allocate codec context: %s", decoder->name));
+	if (video_codec_context == nullptr) {
+		print_line(vformat("Couldn't allocate codec context: %s", decoder->name));
+		return FAILED;
+	}
 
 	int param_copy_result = avcodec_parameters_to_context(video_codec_context, &codec_params);
 
-	ERR_FAIL_COND_V_MSG(param_copy_result < 0, FAILED, vformat("Couldn't copy codec parameters from %s: %s", decoder->name, ffmpeg_get_error_message(param_copy_result)));
+	if (param_copy_result < 0) {
+		print_line(vformat("Couldn't copy codec parameters from %s: %s", decoder->name, ffmpeg_get_error_message(param_copy_result)));
+		return FAILED;
+	}
 
 	video_codec_context->thread_count = 0;
 
 	int open_codec_result = avcodec_open2(video_codec_context, decoder, nullptr);
-	ERR_FAIL_COND_V_MSG(open_codec_result < 0, FAILED, vformat("Error trying to open %s codec: %s", decoder->name, ffmpeg_get_error_message(open_codec_result)));
+	if (open_codec_result < 0) {
+		print_line(vformat("Error trying to open %s codec: %s", decoder->name, ffmpeg_get_error_message(open_codec_result)));
+		return FAILED;
+	}
 
 	print_line("Succesfully initialized video decoder:", decoder->long_name);
 
-	ERR_FAIL_COND_V_MSG(video_codec_context == nullptr, ERR_CANT_CREATE, vformat("Error creating video codec context: Exhausted all available decoders for codec %s", avcodec_get_name(codec_params.codec_id)));
+	if (video_codec_context == nullptr) {
+		print_line(vformat("Error creating video codec context: Exhausted all available decoders for codec %s", avcodec_get_name(codec_params.codec_id)));
+		return ERR_CANT_CREATE;
+	}
 
 	if (!audio_stream) {
 		return OK;
@@ -254,13 +279,22 @@ Error VideoDecoder::recreate_codec_context() {
 			avcodec_free_context(&audio_codec_context);
 		}
 		audio_codec_context = avcodec_alloc_context3(codec);
-		ERR_FAIL_COND_V_MSG(audio_codec_context == nullptr, FAILED, vformat("Couldn't allocate audio codec context: %s", codec->name));
+		if (audio_codec_context == nullptr) {
+		print_line(vformat("Couldn't allocate audio codec context: %s", codec->name));
+		return FAILED;
+	}
 		audio_codec_context->pkt_timebase = audio_stream->time_base;
 
 		int param_copy_result = avcodec_parameters_to_context(audio_codec_context, audio_stream->codecpar);
-		ERR_FAIL_COND_V_MSG(param_copy_result < 0, FAILED, vformat("Couldn't copy codec parameters from %s: %s", codec->name, ffmpeg_get_error_message(param_copy_result)));
+		if (param_copy_result < 0) {
+		print_line(vformat("Couldn't copy codec parameters from %s: %s", codec->name, ffmpeg_get_error_message(param_copy_result)));
+		return FAILED;
+	}
 		int open_codec_result = avcodec_open2(audio_codec_context, codec, nullptr);
-		ERR_FAIL_COND_V_MSG(open_codec_result < 0, ERR_CANT_OPEN, vformat("Error trying to open %s codec: %s", codec->name, ffmpeg_get_error_message(open_codec_result)));
+		if (open_codec_result < 0) {
+		print_line(vformat("Error trying to open %s codec: %s", codec->name, ffmpeg_get_error_message(open_codec_result)));
+		return ERR_CANT_OPEN;
+	}
 		has_audio = true;
 	}
 	return OK;
@@ -331,16 +365,22 @@ void VideoDecoder::_thread_func(void *userdata) {
 				// 在后台线程中执行probe过程，避免UI线程阻塞
 				print_line("Starting FFmpeg probe process in background thread");
 				if (decoder->format_context == nullptr) {
-					decoder->prepare_decoding();
-					Error codec_context_create_error = decoder->recreate_codec_context();
-
-					if (decoder->video_stream == nullptr || codec_context_create_error != OK) {
-						print_line("FFmpeg probe failed, setting state to FAULTED");
-						decoder->decoder_state = DecoderState::FAULTED;
-					} else {
+					do {
+						Error prepare_error = decoder->prepare_decoding();
+						if (prepare_error != OK) {
+							print_line("FFmpeg prepare_decoding failed, setting state to FAULTED");
+							decoder->decoder_state = DecoderState::FAULTED;
+							break;
+						}
+						Error codec_context_create_error = decoder->recreate_codec_context();
+						if (decoder->video_stream == nullptr || codec_context_create_error != OK) {
+							print_line("FFmpeg probe failed, setting state to FAULTED");
+							decoder->decoder_state = DecoderState::FAULTED;
+							break;
+						}
 						print_line("FFmpeg probe completed successfully, setting state to RUNNING");
 						decoder->decoder_state = DecoderState::RUNNING;
-					}
+					} while(0);
 				} else {
 					print_line("Format context already exists, setting state to RUNNING");
 					decoder->decoder_state = DecoderState::RUNNING;
@@ -583,7 +623,10 @@ void VideoDecoder::_read_decoded_audio_frames(AVFrame *p_received_frame) {
 			return;
 		}
 
-		ERR_FAIL_COND_MSG(av_sample_fmt_is_planar((AVSampleFormat)frame->format), "Audio format should never be planar, bug?");
+		if (av_sample_fmt_is_planar((AVSampleFormat)frame->format)) {
+			print_line("Audio format should never be planar, bug?");
+			return;
+		}
 
 		int data_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples, (AVSampleFormat)frame->format, 0);
 		Ref<DecodedAudioFrame> audio_frame = memnew(DecodedAudioFrame(frame_time));
@@ -604,6 +647,11 @@ void VideoDecoder::_read_decoded_audio_frames(AVFrame *p_received_frame) {
 
 void VideoDecoder::_scaler_frame_return(Ref<FFmpegFrame> p_scaler_frame) {
 	scaler_frames.push_back(p_scaler_frame);
+}
+
+void VideoDecoder::_frame_return_deferred(Ref<FFmpegFrame> p_frame) {
+	// 在主线程中调用do_return()，安全地发送信号
+	p_frame->do_return();
 }
 
 Ref<FFmpegFrame> VideoDecoder::_ensure_frame_pixel_format(Ref<FFmpegFrame> p_frame, AVPixelFormat p_target_pixel_format) {
@@ -648,7 +696,8 @@ Ref<FFmpegFrame> VideoDecoder::_ensure_frame_pixel_format(Ref<FFmpegFrame> p_fra
 
 		if (get_buffer_result < 0) {
 			print_line("Failed to allocate SWS frame buffer:", ffmpeg_get_error_message(get_buffer_result));
-			p_frame->do_return();
+			// 在后台线程中使用call_deferred安全地调用do_return()
+			callable_mp(this, &VideoDecoder::_frame_return_deferred).call_deferred(p_frame);
 			return Ref<FFmpegFrame>();
 		}
 	}
@@ -659,7 +708,8 @@ Ref<FFmpegFrame> VideoDecoder::_ensure_frame_pixel_format(Ref<FFmpegFrame> p_fra
 			scaler_frame->get_frame()->data, scaler_frame->get_frame()->linesize);
 
 	// return the original frame regardless of the scaler result.
-	p_frame->do_return();
+	// 在后台线程中使用call_deferred安全地调用do_return()
+	callable_mp(this, &VideoDecoder::_frame_return_deferred).call_deferred(p_frame);
 
 	if (scaler_result < 0) {
 		print_line("Failed to scale frame:", ffmpeg_get_error_message(scaler_result));
@@ -951,12 +1001,18 @@ double DecodedFrame::get_time() const { return time; }
 void DecodedFrame::set_time(double p_time) { time = p_time; }
 
 void DecodedFrame::set_yuv_image_plane(int p_plane_idx, Ref<Image> p_image) {
-	ERR_FAIL_INDEX((size_t)p_plane_idx, std::size(yuv_images));
+	if ((size_t)p_plane_idx >= std::size(yuv_images)) {
+		print_line(vformat("YUV plane index %d out of range (max: %d)", p_plane_idx, (int)std::size(yuv_images)));
+		return;
+	}
 	yuv_images[p_plane_idx] = p_image;
 }
 
 Ref<Image> DecodedFrame::get_yuv_image_plane(int p_plane_idx) const {
-	ERR_FAIL_INDEX_V((size_t)p_plane_idx, std::size(yuv_images), Ref<Image>());
+	if ((size_t)p_plane_idx >= std::size(yuv_images)) {
+		print_line(vformat("YUV plane index %d out of range (max: %d)", p_plane_idx, (int)std::size(yuv_images)));
+		return Ref<Image>();
+	}
 	return yuv_images[p_plane_idx];
 }
 

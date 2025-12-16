@@ -43,7 +43,11 @@ AVFrame *FFmpegFrame::get_frame() const {
 }
 
 void FFmpegFrame::do_return() {
-	emit_signal("return_frame", this);
+	// 注意：这个函数可能在后台线程中被调用，不能直接使用emit_signal
+	// 信号发送需要通过VideoDecoder在主线程中处理
+	// 如果需要在后台线程中调用，应该通过VideoDecoder的return_frame机制
+	// 而不是直接发送信号
+	call_deferred("emit_signal", "return_frame", this);
 }
 
 FFmpegFrame::FFmpegFrame() {
