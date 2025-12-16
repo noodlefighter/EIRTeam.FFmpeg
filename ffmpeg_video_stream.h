@@ -55,7 +55,7 @@ using namespace godot;
 #include "video_decoder.h"
 
 // 重试间隔常量（毫秒）
-static const double RETRY_INTERVAL_MS = 10000.0; // 10秒重试间隔
+static const double RETRY_INTERVAL_MS = 5000.0; // 5秒重试间隔
 
 class YUVGPUConverter : public RefCounted {
 	RID shader;
